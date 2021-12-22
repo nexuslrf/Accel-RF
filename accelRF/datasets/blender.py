@@ -5,7 +5,8 @@ import imageio
 import cv2
 
 import torch
-import torch.utils.data as data
+import copy
+from .base import Dataset
 
 # TODO add auto data downloading?
 
@@ -43,7 +44,7 @@ def pose_spherical(theta, phi, radius):
                   [ 0,0,0,1]])) @ c2w
     return c2w
 
-class Blender(data.Dataset):
+class Blender(Dataset):
     """
     NeRF Blender datasets used in original NeRF paper.
 
@@ -87,7 +88,7 @@ class Blender(data.Dataset):
             all_imgs.append(imgs)
             all_poses.append(poses)
 
-        self.i_split = [np.arange(counts[i], counts[i+1]) for i in range(3)]
+        i_split = [np.arange(counts[i], counts[i+1]) for i in range(3)]
 
         imgs = np.concatenate(all_imgs, 0)
         poses = np.concatenate(all_poses, 0)
@@ -96,10 +97,6 @@ class Blender(data.Dataset):
         H, W = self.img_shape
         camera_angle_x = float(meta['camera_angle_x'])
         focal = .5 * W / np.tan(.5 * camera_angle_x)
-
-        # TODO this render poses should also be customizable.
-        self.render_poses = torch.stack([pose_spherical(angle, -30.0, 4.0) 
-                                for angle in np.linspace(-180,180,40+1)[:-1]], 0)
 
         if half_res:
             H = H//2
@@ -123,6 +120,11 @@ class Blender(data.Dataset):
                 imgs = imgs[...,:3]*imgs[...,-1:]
         
         self.H, self.W = H, W
+        self.i_split = {
+            'train': i_split[0],
+            'val': i_split[1],
+            'test': i_split[2]
+        }
         self.focal = focal
         # self.K = np.array([
         #     [focal, 0, 0.5*W],
@@ -130,10 +132,20 @@ class Blender(data.Dataset):
         #     [0, 0, 1]
         # ])
 
-        # TODO construct data tensor
-        self.imgs = torch.FloatTensor(imgs, device='cpu')
+        self.imgs = torch.FloatTensor(imgs)
         self.poses = torch.FloatTensor(poses)
 
-        
-    # def __getitem__(self, index):
-    #     pass
+    
+    def get_sub_set(self, split_set: str):
+        sub_set = copy.copy(self)
+        sub_set.imgs = sub_set.imgs[self.i_split[split_set]]
+        sub_set.poses = sub_set.poses[self.i_split[split_set]]
+        return sub_set
+
+    def get_render_set(self, phi: float=30.0, radius: float=4.0, n_frame: int=40):
+        render_poses = torch.stack([pose_spherical(angle, -phi, radius)
+                                for angle in np.linspace(-180,180,n_frame+1)[:-1]], 0)
+        render_set = copy.copy(self)
+        render_set.imgs = None
+        render_set.poses = render_poses
+        return render_set

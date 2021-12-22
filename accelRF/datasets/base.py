@@ -2,13 +2,9 @@ from typing import Dict, List, Tuple
 import torch
 import torch.utils.data as data
 
-TRAIN = 0
-VAL = 1
-TEST = 2
-
-class RFDataset(data.Dataset):
+class Dataset(data.Dataset):
     def __init__(self) -> None:
-        self.mode = TRAIN # choice in [TRAIN, VAL, TEST]
+        super().__init__()
 
     def render_downsample(self, render_factor: int):
         self.downsample_factor = render_factor
@@ -17,11 +13,17 @@ class RFDataset(data.Dataset):
         f = self.downsample_factor
         return self.H//f, self.W//f, self.focal/f
 
+    def __len__(self) -> int:
+        return len(self.poses)    
 
+    # this function can be overwriten
     def __getitem__(self, index) -> Dict:
-        if self.mode == VAL:
-            return {'pose': self.poses[self.mode][index]}
-        elif self.mode == TEST:
-            return {'pose': self.poses[self.mode][index], 'gt': self.imgs[self.mode][index]}
-
+        if self.imgs is not None:
+            return {
+                'pose': self.poses[index],
+                'gt_img': self.imgs[index]
+            }
+        else:
+            return {'pose': self.poses[index]}
+    
     # TODO ray batching function

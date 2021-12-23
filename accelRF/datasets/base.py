@@ -2,9 +2,10 @@ from typing import Dict, List, Tuple
 import torch
 import torch.utils.data as data
 
-class Dataset(data.Dataset):
+class BaseDataset(data.Dataset):
     def __init__(self) -> None:
         super().__init__()
+        self.downsample_factor = 1
 
     def render_downsample(self, render_factor: int):
         self.downsample_factor = render_factor
@@ -26,4 +27,7 @@ class Dataset(data.Dataset):
         else:
             return {'pose': self.poses[index]}
     
-    # TODO ray batching function
+    def to(self, device):
+        self.poses = self.poses.to(device)
+        if self.imgs is not None:
+            self.imgs = self.imgs.to(device)

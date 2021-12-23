@@ -6,7 +6,7 @@ import cv2
 
 import torch
 import copy
-from .base import Dataset
+from .base import BaseDataset
 
 # TODO add auto data downloading?
 
@@ -44,7 +44,7 @@ def pose_spherical(theta, phi, radius):
                   [ 0,0,0,1]])) @ c2w
     return c2w
 
-class Blender(Dataset):
+class Blender(BaseDataset):
     """
     NeRF Blender datasets used in original NeRF paper.
 

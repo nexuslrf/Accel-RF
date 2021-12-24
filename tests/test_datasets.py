@@ -2,7 +2,7 @@ import unittest
 import os, sys
 import logging
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from torch.utils.data import DataLoader
@@ -31,10 +31,10 @@ class TestDataset(unittest.TestCase):
         train_loader = DataLoader(self.dataset.get_sub_set('train'), batch_size=8, shuffle=True, num_workers=0, pin_memory=True)
         render_loader = DataLoader(self.dataset.get_render_set(), batch_size=8, shuffle=True, num_workers=0, pin_memory=True)
         train_batch = next(iter(train_loader))
-        log.debug('dataloader_on_dataset')
-        log.debug(train_batch['pose'].shape, train_batch['gt_img'].shape)
+        log.info('dataloader_on_dataset')
+        log.info(train_batch['pose'].shape, train_batch['gt_img'].shape)
         render_batch = next(iter(render_loader))
-        log.debug(render_batch['pose'].shape)
+        log.info(render_batch['pose'].shape)
 
 
 if __name__ == '__main__':

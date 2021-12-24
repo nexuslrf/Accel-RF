@@ -31,3 +31,4 @@ class BaseDataset(data.Dataset):
         self.poses = self.poses.to(device)
         if self.imgs is not None:
             self.imgs = self.imgs.to(device)
+        return self

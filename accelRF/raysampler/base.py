@@ -8,12 +8,14 @@ class BaseSampler(data.Dataset):
         self,
         dataset: BaseDataset,
         N_rand: int,
-        length: int
+        length: int,
+        device: torch.device='cpu'
         ) -> None:
         super().__init__()
         self.dataset = dataset
         self.N_rand = N_rand
         self.queue_length = length
+        self.device = device
 
     def __len__(self) -> int:
         return self.queue_length

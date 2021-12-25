@@ -131,20 +131,6 @@ class NeRFRaySampler(BaseRaySampler):
             else:
                 return rays_o, rays_d
 
-        # TODO convert rays_o/d into coord points
-        if self.use_viewdirs:
-            # provide ray directions as input
-            viewdirs = rays_d
-            # c2w_staticcam is removed --> TODO maybe can add another simpler class to support it
-            viewdirs = viewdirs / torch.norm(viewdirs, dim=-1, keepdim=True)
-            viewdirs = torch.reshape(viewdirs, [-1, 3]).float()
-        
-        if self.use_ndc:
-            # TODO later..
-            pass
-
-        # batchify rays...
-
 
 
 

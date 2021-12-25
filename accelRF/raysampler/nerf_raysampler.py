@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from .base import BaseRaySampler
-from .utils import get_rays
+from .utils import get_rays, ndc_rays
 
 
 class NeRFRaySampler(BaseRaySampler):
@@ -21,6 +21,8 @@ class NeRFRaySampler(BaseRaySampler):
         N_rand: int=2048,
         length: int=32,
         use_batching: bool=False,
+        use_viewdirs: bool=True,
+        use_ndc: bool=False,
         full_rendering: bool=False,
         precrop: bool=True,
         precrop_frac: float=0.5,
@@ -29,6 +31,8 @@ class NeRFRaySampler(BaseRaySampler):
         
         super().__init__(dataset, N_rand, length, device)
         self.use_batching = use_batching
+        self.use_viewdirs = use_viewdirs
+        self.use_ndc = use_ndc
         self.full_rendering = full_rendering
         self.precrop = precrop
         self.precrop_frac = precrop_frac
@@ -87,12 +91,13 @@ class NeRFRaySampler(BaseRaySampler):
                 ), -1).reshape(-1, 2) # (H, W, 2)
 
     def __getitem__(self, index):
+        output = {}
         if not self.full_rendering:
             if self.use_batching:
                 # Random over all images
                 batch_inds = self.shuffle_inds[self.i_batch:self.i_batch+self.N_rand]
                 batch = self.rays_rgb[:, batch_inds] # [3, B, 2+1]
-                rays_o, rays_d, target_s = batch[0], batch[1], batch[2]
+                output['rays_o'], output['rays_d'], output['gt_rgb'] = batch[0], batch[1], batch[2]
                 cam_viewdir = None
                 self.i_batch += self.N_rand
                 if self.i_batch >= self.rays_rgb.shape[1]:
@@ -112,24 +117,27 @@ class NeRFRaySampler(BaseRaySampler):
                 # np.random.choice(self.coords.shape[0], size=[self.N_rand], replace=False)
                 select_inds = torch.randperm(self.coords.shape[0])[:self.N_rand]  # (N_rand,)
                 select_coords = self.coords[select_inds].long()  # (N_rand, 2)
-                rays_o = rays_o[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
-                rays_d = rays_d[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
-                target_s = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
+                output['rays_o'] = rays_o[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
+                output['rays_d'] = rays_d[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
+                output['gt_rgb'] = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
             
-            # this function is not done!
-            return rays_o, rays_d, target_s
         else:
             img_dict = self.dataset[index]
             pose = img_dict['pose'][:3,:4]
             cam_viewdir = img_dict['pose'][:3,2]
             rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose)
-            rays_o = rays_o.reshape(-1,3)  # (N, 3)
-            rays_d = rays_d.reshape(-1,3)  # (N, 3)
+            output['rays_o'] = rays_o.reshape(-1,3)  # (N, 3)
+            output['rays_d'] = rays_d.reshape(-1,3)  # (N, 3)
             if 'gt_img' in img_dict:
-                target_s = img_dict['gt_img'].reshape(-1,3)  # (N, 3)
-                return rays_o, rays_d, target_s
-            else:
-                return rays_o, rays_d
+                output['gt_rgb'] = img_dict['gt_img'].reshape(-1,3) # (N, 3)
+
+        if self.use_viewdirs:
+            output['viewdirs'] = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
+        
+        if self.use_ndc:
+            # for forward facing scenes
+            output['rays_o'], output['rays_d'] = \
+                ndc_rays(self.dataset.get_hwf(), 1., rays_o, rays_d)
 
 
 

@@ -1,2 +1,2 @@
-from .base import BaseSampler
-from .nerf_sampler import NeRFSampler
+from .base import BaseRaySampler
+from .nerf_sampler import NeRFRaySampler

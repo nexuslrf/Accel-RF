@@ -3,6 +3,7 @@ import numpy as np
 import torch
 
 # Ray helpers
+# @torch.jit.script
 def get_rays(H: int, W: int, focal: float, c2w: torch.Tensor):
     device = c2w.device
     i, j = torch.meshgrid(

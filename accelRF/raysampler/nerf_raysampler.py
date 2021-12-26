@@ -139,6 +139,7 @@ class NeRFRaySampler(BaseRaySampler):
             output['rays_o'], output['rays_d'] = \
                 ndc_rays(self.dataset.get_hwf(), 1., rays_o, rays_d)
 
+        return output
 
 
 

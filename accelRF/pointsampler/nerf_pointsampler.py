@@ -63,7 +63,7 @@ def fine_sample(
     z_vals_mid = .5 * (z_vals[...,1:] + z_vals[...,:-1]) 
 
     # z_samples = sample_pdf(z_vals_mid, weights[...,1:-1], N_samples, det=det)
-    # unfolded for more fusion opportunities..
+    # unfold `sample_pdf` for more fusion opportunities..
     
     # Get pdf
     device = weights.device

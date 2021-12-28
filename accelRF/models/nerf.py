@@ -45,10 +45,11 @@ class NeRF(nn.Module):
                                 nn.ReLU(True))
 
         # output layers
-        self.sigma_layer = nn.Linear(W, 1)
+        self.sigma_layer = nn.Sequential(
+                                nn.Linear(W, 1), nn.ReLU(True)) # Note: ReLU is applied!
         self.rgb_layer = nn.Sequential(
-                        nn.Linear(W//2, 3), # rgb_channel = 3
-                        nn.Sigmoid()) # Note: sigmoid is already applied here!
+                            nn.Linear(W//2, 3), # rgb_channel = 3
+                            nn.Sigmoid()) # Note: sigmoid is already applied here!
 
     def forward(self, pts: Tensor, dir: Optional[Tensor]=None):
         """

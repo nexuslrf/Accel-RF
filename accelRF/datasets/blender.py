@@ -8,6 +8,9 @@ import torch
 import copy
 from .base import BaseDataset
 
+
+__all__ = ['Blender']
+
 # TODO add auto data downloading?
 
 # TODO this bounding box values are copy from KiloNeRF

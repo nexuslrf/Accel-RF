@@ -26,30 +26,30 @@ class TestNeRF(unittest.TestCase):
         model = NeRF(D=8, W=256, in_channels_pts=63, in_channels_dir=27, skips=[4]).to('cuda')
         pts = torch.randn(1024, 63).to('cuda')
         dir = torch.randn(1024, 27).to('cuda')
-        alpha_shape = torch.Size([1024, 1])
+        sigma_shape = torch.Size([1024, 1])
         rgb_shape = torch.Size([1024, 3])
-        out_alpha = model(pts)['alpha']
-        self.assertEqual(out_alpha.shape, alpha_shape)
+        out_sigma = model(pts)['sigma']
+        self.assertEqual(out_sigma.shape, sigma_shape)
         out = model(pts, dir)
-        out_alpha, out_rgb = out['alpha'], out['rgb']
-        # out_alpha, out_rgb = torch.split(model(pts, dir), [1, 3], -1)
-        self.assertEqual(out_alpha.shape, alpha_shape)
+        out_sigma, out_rgb = out['sigma'], out['rgb']
+        # out_sigma, out_rgb = torch.split(model(pts, dir), [1, 3], -1)
+        self.assertEqual(out_sigma.shape, sigma_shape)
         self.assertEqual(out_rgb.shape, rgb_shape)
 
     def test_nerf_model_jit(self):
         model = NeRF(D=8, W=256, in_channels_pts=63, in_channels_dir=27, skips=[4]).to('cuda')
         pts = torch.randn(1024, 63).to('cuda')
         dir = torch.randn(1024, 27).to('cuda')
-        # out_alpha, out_rgb = torch.split(model(pts, dir), [1, 3], -1)
+        # out_sigma, out_rgb = torch.split(model(pts, dir), [1, 3], -1)
         out = model(pts, dir)
-        out_alpha, out_rgb = out['alpha'], out['rgb']
+        out_sigma, out_rgb = out['sigma'], out['rgb']
         # jit
         model_jit = torch.jit.script(model)
-        # out_alpha_, out_rgb_ = torch.split(model_jit(pts, dir), [1, 3], -1)
-        self.assertEqual((out_alpha - model_jit(pts)['alpha']).norm(), 0)
+        # out_sigma_, out_rgb_ = torch.split(model_jit(pts, dir), [1, 3], -1)
+        self.assertEqual((out_sigma - model_jit(pts)['sigma']).norm(), 0)
         out_ = model_jit(pts, dir)
-        out_alpha_, out_rgb_ = out_['alpha'], out_['rgb']
-        self.assertEqual((out_alpha - out_alpha_).norm(), 0)
+        out_sigma_, out_rgb_ = out_['sigma'], out_['rgb']
+        self.assertEqual((out_sigma - out_sigma_).norm(), 0)
         self.assertEqual((out_rgb - out_rgb_).norm(), 0)
         # backward
         loss_ = (out_rgb_ ** 2).mean()

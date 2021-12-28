@@ -11,7 +11,7 @@ class NeRF(nn.Module):
         ) -> None:
         """
         Args:
-            D: number of layers for density (alpha) encoder
+            D: number of layers for density (sigma) encoder
             W: number of hidden units in each layer
             in_channels_pts: number of input channels for pts (3+3*10*2=63 by default)
             in_channels_dir: number of input channels for direction (3+3*4*2=27 by default)
@@ -45,14 +45,14 @@ class NeRF(nn.Module):
                                 nn.ReLU(True))
 
         # output layers
-        self.alpha_layer = nn.Linear(W, 1)
+        self.sigma_layer = nn.Linear(W, 1)
         self.rgb_layer = nn.Sequential(
                         nn.Linear(W//2, 3), # rgb_channel = 3
                         nn.Sigmoid()) # Note: sigmoid is already applied here!
 
     def forward(self, pts: Tensor, dir: Optional[Tensor]=None):
         """
-        Encodes input (pts+dir) to rgb+alpha (not ready to render yet).
+        Encodes input (pts+dir) to rgb+sigma (not ready to render yet).
         For rendering this ray, please see rendering.py
 
         Args:
@@ -62,7 +62,7 @@ class NeRF(nn.Module):
 
         Outputs:
             Dict(
-                alpha: (B, 1),
+                sigma: (B, 1),
                 rgb: (B, 3)
             )
         """
@@ -72,10 +72,10 @@ class NeRF(nn.Module):
             if i in self.skips:
                 pts_ = torch.cat([pts, pts_], -1)
 
-        alpha = self.alpha_layer(pts_)
+        sigma = self.sigma_layer(pts_)
 
         if dir is None:
-            return {'alpha': alpha}
+            return {'sigma': sigma}
 
         pts_feature = self.pts_feature_layer(pts_)
 
@@ -84,7 +84,7 @@ class NeRF(nn.Module):
         rgb = self.rgb_layer(views_feature)
 
         return {
-            'alpha': alpha,
+            'sigma': sigma,
             'rgb': rgb
         }
-        # torch.cat([alpha, rgb], -1)
+        # torch.cat([sigma, rgb], -1)

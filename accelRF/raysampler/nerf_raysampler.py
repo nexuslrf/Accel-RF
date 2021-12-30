@@ -21,7 +21,6 @@ class NeRFRaySampler(BaseRaySampler):
         N_rand: int=2048,
         length: int=32,
         use_batching: bool=False,
-        use_viewdirs: bool=True,
         use_ndc: bool=False,
         full_rendering: bool=False,
         precrop: bool=True,
@@ -31,7 +30,6 @@ class NeRFRaySampler(BaseRaySampler):
         
         super().__init__(dataset, N_rand, length, device)
         self.use_batching = use_batching
-        self.use_viewdirs = use_viewdirs
         self.use_ndc = use_ndc
         self.full_rendering = full_rendering
         self.precrop = precrop
@@ -91,6 +89,13 @@ class NeRFRaySampler(BaseRaySampler):
                 ), -1).reshape(-1, 2) # (H, W, 2)
 
     def __getitem__(self, index):
+        '''
+        Return:
+            rays_o: Tensor, sampled ray origins, [N_rays, 3]
+            rays_d: Tensor, sampled ray directions, [N_rays, 3]
+            viewdirs: Optional[Tensor], normalized ray directions, [N_rays, 3]
+            gt_rgb: Tensor, ground truth color superized learning [N_rays, 3]
+        '''
         output = {}
         if not self.full_rendering:
             if self.use_batching:
@@ -131,8 +136,9 @@ class NeRFRaySampler(BaseRaySampler):
             if 'gt_img' in img_dict:
                 output['gt_rgb'] = img_dict['gt_img'].reshape(-1,3) # (N, 3)
 
-        if self.use_viewdirs:
-            output['viewdirs'] = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
+        # # Update: remove use_viewdirs, this value can be computed later, thus reducing host-device mem comm.
+        # if self.use_viewdirs:
+        #     output['viewdirs'] = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
         
         if self.use_ndc:
             # for forward facing scenes

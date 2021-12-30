@@ -10,7 +10,7 @@ import torch.nn as nn
 import accelRF.models.modules as modules
 from accelRF.models.nerf import NeRF
 
-# @unittest.SkipTest
+@unittest.SkipTest
 class TestModules(unittest.TestCase):
     def test_positional_encoding(self):
         pe = modules.PositionalEncoding(N_freqs=4)
@@ -25,14 +25,14 @@ class TestModules(unittest.TestCase):
         self.assertEqual(y2.shape, torch.Size([16, 64, 3+3*2*4]))
         # self.assertEqual(pe.state_dict(), OrderedDict())
 
-@unittest.SkipTest
+# @unittest.SkipTest
 class TestNeRF(unittest.TestCase):
     def test_nerf_model(self):
         model = NeRF(D=8, W=256, in_channels_pts=63, in_channels_dir=27, skips=[4]).to('cuda')
-        pts = torch.randn(1024, 63).to('cuda')
-        dir = torch.randn(1024, 27).to('cuda')
-        sigma_shape = torch.Size([1024, 1])
-        rgb_shape = torch.Size([1024, 3])
+        pts = torch.randn(16, 64, 63).to('cuda')
+        dir = torch.randn(16, 64, 27).to('cuda')
+        sigma_shape = torch.Size([16, 64, 1])
+        rgb_shape = torch.Size([16, 64, 3])
         out_sigma = model(pts)['sigma']
         self.assertEqual(out_sigma.shape, sigma_shape)
         out = model(pts, dir)
@@ -41,6 +41,7 @@ class TestNeRF(unittest.TestCase):
         self.assertEqual(out_sigma.shape, sigma_shape)
         self.assertEqual(out_rgb.shape, rgb_shape)
 
+    @unittest.SkipTest
     def test_nerf_model_jit(self):
         model = NeRF(D=8, W=256, in_channels_pts=63, in_channels_dir=27, skips=[4]).to('cuda')
         pts = torch.randn(1024, 63).to('cuda')

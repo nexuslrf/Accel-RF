@@ -19,7 +19,7 @@ class PositionalEncoding(nn.Module):
         self.half_pi = np.pi / 2
         self.freq_bands = nn.parameter.Parameter(self.freq_bands, requires_grad=False)
 
-    # @torch.no_grad()
+    @torch.no_grad()
     def forward(self, x: Tensor):
         fx = torch.einsum('...c,f->...fc', x, self.freq_bands) # einsum 🥰 🥰 🥰 
         embed = torch.sin(torch.cat([fx, fx + self.half_pi], -2)) # [..., 2*N_freqs, in_ch]

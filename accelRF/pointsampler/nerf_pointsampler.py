@@ -29,6 +29,9 @@ def coarse_sample(
         near, far: float, from camera model
         rays_o: Tensor, the orgin of rays. [N_rays, 3]
         rays_d: Tensor, the direction of rays. [N_rays, 3]
+    Return:
+        pts: Tensor, sampled points. [N_rays, N_samples, 3]
+        z_vals: Tensor, [N_rays, N_samples] or [1, N_samples]
     '''
     device = rays_o.device
     N_rays = rays_o.shape[0]

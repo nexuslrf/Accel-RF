@@ -12,33 +12,29 @@ class PositionalEncoding(nn.Module):
         self.freq_last = freq_last
 
         if log_sampling:
-            self.freq_bands = 2.**torch.linspace(0., (N_freqs-1), steps=N_freqs)[None,:,None]
+            self.freq_bands = 2.**torch.linspace(0., (N_freqs-1), steps=N_freqs)
         else:
-            self.freq_bands = torch.linspace(2.**0., 2.**(N_freqs-1), steps=N_freqs)[None,:,None]
+            self.freq_bands = torch.linspace(2.**0., 2.**(N_freqs-1), steps=N_freqs)
         
-        self.period_offset = np.pi / 2 * torch.arange(2).reshape(1,1,2,1)
+        self.half_pi = np.pi / 2
         self.freq_bands = nn.parameter.Parameter(self.freq_bands, requires_grad=False)
-        self.period_offset = nn.parameter.Parameter(self.period_offset, requires_grad=False)
 
     # @torch.no_grad()
-    def forward(self, x):
-        bs, input_dims = x.shape
-        
-        embed = torch.sin(
-            (x[:,None,:] * self.freq_bands).unsqueeze(-2) + self.period_offset
-            ).reshape(bs, -1)
-
+    def forward(self, x: Tensor):
+        fx = torch.einsum('...c,f->...fc', x, self.freq_bands) # einsum 🥰 🥰 🥰 
+        embed = torch.sin(torch.cat([fx, fx + self.half_pi], -2)) # [..., 2*N_freqs, in_ch]
         # <==>
         # torch.cat([
-        #     torch.sin(x[:,None,:] * self.freq_bands), 
-        #     torch.cos(x[:,None,:] * self.freq_bands)
-        # ], -1).reshape(bs, -1)
+        #     torch.sin(fx), 
+        #     torch.cos(fx)
+        # ], -1)
 
         if self.include_input:
-            embed = torch.cat([x,embed], 1)
+            embed = torch.cat([x.unsqueeze(-2),embed], -2) # [..., 2*N_freqs+1, in_ch]
         if self.freq_last:
-            embed = embed.reshape(bs, -1, input_dims).transpose(-1,-2).reshape(bs, -1)
+            embed = embed.transpose(-1,-2) # [..., in_ch, 2*N_freqs?(+1)]
 
+        embed = embed.flatten(-2) # [..., in_ch * ( 2*N_freqs?(+1) )]
         return embed
     
     # add two fake state_dict function to bypass saving/loading PE's parameters

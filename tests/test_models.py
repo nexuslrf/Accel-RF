@@ -10,17 +10,22 @@ import torch.nn as nn
 import accelRF.models.modules as modules
 from accelRF.models.nerf import NeRF
 
-@unittest.SkipTest
+# @unittest.SkipTest
 class TestModules(unittest.TestCase):
     def test_positional_encoding(self):
         pe = modules.PositionalEncoding(N_freqs=4)
+        pe = torch.jit.script(pe)
         pe = nn.DataParallel(pe).to('cuda')
+        pe = pe.to('cuda')
         x = torch.rand(1024, 3).to('cuda')
-        tar_shape = torch.Size([1024, 3+3*2*4])
         y = pe(x)
-        self.assertEqual(y.shape, tar_shape)
-        self.assertEqual(pe.state_dict(), OrderedDict())
+        self.assertEqual(y.shape, torch.Size([1024, 3+3*2*4]))
+        x2 = torch.rand(16, 64, 3).to('cuda')
+        y2 = pe(x2)
+        self.assertEqual(y2.shape, torch.Size([16, 64, 3+3*2*4]))
+        # self.assertEqual(pe.state_dict(), OrderedDict())
 
+@unittest.SkipTest
 class TestNeRF(unittest.TestCase):
     def test_nerf_model(self):
         model = NeRF(D=8, W=256, in_channels_pts=63, in_channels_dir=27, skips=[4]).to('cuda')

@@ -20,17 +20,17 @@ class TestNeRFRendering(unittest.TestCase):
         rgb = torch.sigmoid(torch.randn(self.N_rays, self.N_samples, 3, device=device))
         z_vals = torch.linspace(0, 1, steps=self.N_samples, device=device)[None,:]
         z_vals_ = z_vals.expand(self.N_rays, self.N_samples)
-        rays_d = torch.randn(self.N_rays, 3, device=device)
+        ray_lens = torch.randn(self.N_rays, 1, device=device)
         tar_rgb_shape = torch.Size([self.N_rays, 3])
 
-        ret = volumetric_rendering(rgb, sigma, z_vals, rays_d)
+        ret = volumetric_rendering(rgb, sigma, z_vals, ray_lens)
         self.assertEqual(ret['rgb'].shape, tar_rgb_shape)
         
-        ret = volumetric_rendering(rgb, sigma, z_vals_, rays_d)
+        ret = volumetric_rendering(rgb, sigma, z_vals_, ray_lens)
         self.assertEqual(ret['rgb'].shape, tar_rgb_shape)
 
         rgb.requires_grad = True
-        ret = volumetric_rendering(rgb, sigma, z_vals_, rays_d)
+        ret = volumetric_rendering(rgb, sigma, z_vals_, ray_lens)
         loss = (ret['rgb']**2).mean()
         loss.backward()
         logging.info(rgb.grad.sum())

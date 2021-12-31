@@ -130,7 +130,7 @@ class NeRFRaySampler(BaseRaySampler):
                 output['rays_o'] = rays_o[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
                 output['rays_d'] = rays_d[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
                 output['gt_rgb'] = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
-                output['coords'] = self.coords # just for debug
+                # output['coords'] = self.coords # just for debug
         else:
             img_dict = self.dataset[index]
             pose = img_dict['pose'][:3,:4]

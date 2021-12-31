@@ -60,45 +60,20 @@ class TestNeRFRaySampler(unittest.TestCase):
         self.assertEqual(out['rays_d'].shape, self.batch_shape)
         self.assertEqual(out['gt_rgb'].shape, self.batch_shape)
 
-    @unittest.SkipTest
+    # @unittest.SkipTest
     def test_attribute_update_with_dataloader(self):
         """To see difference, the __getitem__ function's return is modified into:
         gt_rgb has different value when precrop is True / False
         """
         for i in range(3):
-            raysampler = NeRFRaySampler(self.dataset, length=4)
+            raysampler = NeRFRaySampler(self.dataset, length=40, precrop=True, precrop_iters=5)
             logging.info(f'{i} workers')
-            rayloader = DataLoader(raysampler, 
-                    batch_size=1, shuffle=True, num_workers=i, pin_memory=True)
-            for batch in rayloader:
-                logging.info('batch: ' + batch['gt_rgb'].sum())
-            raysampler.disable_precrop()
-            logging.info('After disabling in raysampler...')
-            for batch in rayloader:
-                logging.info('batch: ' + batch['gt_rgb'].sum())
-            rayloader.dataset.disable_precrop()
-            logging.info('After disabling in loader.dataset...')
-            for batch in rayloader:
-                logging.info('batch: ' + batch['gt_rgb'].sum())
+            rayloader = DataLoader(raysampler, batch_size=1, num_workers=i, pin_memory=True)
+            for i, batch in enumerate(rayloader):
+                c_sum = batch['coords'].sum()
+                logging.info(f'batch: {c_sum}')
 
-        logging.info('Mode II')
-        for i in range(3):
-            raysampler = NeRFRaySampler(self.dataset, length=4)
-            logging.info(f'{i} workers')
-            rayloader = DataLoader(raysampler, 
-                    batch_size=1, shuffle=True, num_workers=i, pin_memory=True)
-            cnt = 0
-            while cnt < 12:
-                for batch in rayloader:
-                    logging.info('batch: ' + batch['gt_rgb'].sum())
-                    cnt+=1
-                    if cnt == 6:
-                        raysampler.disable_precrop()
-                        logging.info('After disabling in raysampler...')
-                    if cnt == 10:
-                        rayloader.dataset.disable_precrop()
-                        logging.info('After disabling in loader.dataset...')
-
+    @unittest.SkipTest
     def test_full_rendering(self):
         raysampler = NeRFRaySampler(self.dataset, full_rendering=True, precrop=False)
         logging.info('rendering full image')

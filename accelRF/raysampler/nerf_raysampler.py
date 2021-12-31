@@ -12,19 +12,22 @@ class NeRFRaySampler(BaseRaySampler):
         -
         -
 
-    .. note:: use_batching mode can only support num_workers <= 1
+    .. note:: 
+        use_batching mode can only support num_workers <= 1
+        dataloader shuffle must be False if (precrop==True and not use_batching)
     """
     # TODO add full image rendering mode
     def __init__(
         self, 
         dataset, 
         N_rand: int=2048,
-        length: int=32,
+        length: int=1000,
         use_batching: bool=False,
         use_ndc: bool=False,
         full_rendering: bool=False,
-        precrop: bool=True,
+        precrop: bool=False,
         precrop_frac: float=0.5,
+        precrop_iters: int=500,
         device: torch.device='cpu'
         ) -> None:
         
@@ -34,6 +37,7 @@ class NeRFRaySampler(BaseRaySampler):
         self.full_rendering = full_rendering
         self.precrop = precrop
         self.precrop_frac = precrop_frac
+        self.precrop_iters = precrop_iters
         if full_rendering: 
             assert use_batching==False and precrop==False
             self.length = len(self.dataset)
@@ -57,8 +61,7 @@ class NeRFRaySampler(BaseRaySampler):
             self.i_batch = 0
         
         else:
-            # the current solution for iters after `precrop_iters`:
-            # re-instantiate a sampler that disable `precrop`.
+            # the current solution for iters after `precrop_iters`
             if self.precrop: 
                 dH = int(H//2 * self.precrop_frac)
                 dW = int(W//2 * self.precrop_frac)
@@ -93,7 +96,6 @@ class NeRFRaySampler(BaseRaySampler):
         Return:
             rays_o: Tensor, sampled ray origins, [N_rays, 3]
             rays_d: Tensor, sampled ray directions, [N_rays, 3]
-            viewdirs: Optional[Tensor], normalized ray directions, [N_rays, 3]
             gt_rgb: Tensor, ground truth color superized learning [N_rays, 3]
         '''
         output = {}
@@ -110,6 +112,9 @@ class NeRFRaySampler(BaseRaySampler):
                     self.shuffle_inds = torch.randperm(self.rays_rgb.shape[1], device=self.device)
                     self.i_batch = 0
             else:
+                if self.precrop and index >= self.precrop_iters:
+                    self.disable_precrop()
+                    print('disable precrop!')
                 img_i = torch.randint(len(self.dataset), ())
                 img_dict = self.dataset[img_i]
                 pose = img_dict['pose'][:3,:4]
@@ -117,7 +122,7 @@ class NeRFRaySampler(BaseRaySampler):
                 target = img_dict['gt_img'] # if 'gt_img' in img_dict else None
                 rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose)
 
-                # To avoid manually setting numpy for ender user when num_workers > 1, 
+                # To avoid manually setting numpy random seed for ender user when num_workers > 1, 
                 # replace np.random.choice with torch.randperm
                 # np.random.choice(self.coords.shape[0], size=[self.N_rand], replace=False)
                 select_inds = torch.randperm(self.coords.shape[0])[:self.N_rand]  # (N_rand,)
@@ -125,7 +130,7 @@ class NeRFRaySampler(BaseRaySampler):
                 output['rays_o'] = rays_o[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
                 output['rays_d'] = rays_d[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
                 output['gt_rgb'] = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
-            
+                output['coords'] = self.coords # just for debug
         else:
             img_dict = self.dataset[index]
             pose = img_dict['pose'][:3,:4]

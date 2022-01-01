@@ -148,7 +148,7 @@ class NeRFRaySampler(BaseRaySampler):
         if self.use_ndc:
             # for forward facing scenes
             output['rays_o'], output['rays_d'] = \
-                ndc_rays(self.dataset.get_hwf(), 1., rays_o, rays_d)
+                ndc_rays(self.dataset.get_hwf(), 1., output['rays_o'], output['rays_d'])
 
         return output
 

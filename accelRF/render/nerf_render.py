@@ -110,10 +110,10 @@ class NeRFRender(nn.Module):
         pts_embed = self.embedder_pts(pts) # [N_rays, N_samples, pe_dim]
 
         dir_lens = torch.norm(rays_d, dim=-1, keepdim=True) # [N_rays, 1]
-        viewdirs = rays_d / dir_lens # normalize the view direction
+        viewdirs = (rays_d / dir_lens)[...,None,:] # normalize the view direction, [N_rays, 1, 3]
         view_embed = self.embedder_views(viewdirs) # [N_rays, 1, ve_dim]
         
-        if skip_coarse_rgb:
+        if not skip_coarse_rgb:
             nn_out = self.model(pts_embed, view_embed.expand(*pts.shape[:-1],-1)) # rgb: [N_rays, N_samples, 3], sigma: [N_rays, N_samples, 1]  
             r_out = volumetric_rendering(nn_out['rgb'], nn_out['sigma'], z_vals, dir_lens, self.white_bkgd)
         else:

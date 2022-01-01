@@ -44,7 +44,7 @@ def coarse_sample(
         upper = torch.cat([mids, init_z_vals[-1:]], -1)
         lower = torch.cat([init_z_vals[:1], mids], -1)
         # stratified samples in those intervals
-        t_rand = torch.rand([N_rays, N_samples]) * perturb
+        t_rand = torch.rand([N_rays, N_samples], device=device) * perturb
         z_vals = lower + (upper - lower) * t_rand # [N_rays, N_samples]
     else:
         z_vals = init_z_vals[None, :] # [1, N_samples]

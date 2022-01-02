@@ -81,6 +81,7 @@ class NeRFRender(nn.Module):
         fine_model: Optional[nn.Module]=None,
         white_bkgd: bool=False,
         fast_eval: bool=True,
+        chunk: int=1024*16
         ):
         super().__init__()
         self.embedder_pts = embedder_pts if embedder_pts is not None else nn.Identity()
@@ -94,6 +95,7 @@ class NeRFRender(nn.Module):
         self.use_viewdirs = model
         self.white_bkgd = white_bkgd
         self.fast_eval = fast_eval
+        self.chunk = chunk
 
     def jit_script(self):
         self.embedder_pts = torch.jit.script(self.embedder_pts)
@@ -109,36 +111,45 @@ class NeRFRender(nn.Module):
             rays_o: Tensor, sampled ray origins, [N_rays, 3]
             rays_d: Tensor, sampled ray directions, [N_rays, 3]
         '''
-        ret = {}
-        skip_coarse_rgb = (not self.training and self.fast_eval and not self.hierachical)
-
-        sample_out = self.point_sampler(rays_o, rays_d)
-        pts, z_vals = sample_out # [N_rays, N_samples, 3], [N_rays|1, N_samples]
-        pts_embed = self.embedder_pts(pts) # [N_rays, N_samples, pe_dim]
-
-        dir_lens = torch.norm(rays_d, dim=-1, keepdim=True) # [N_rays, 1]
-        viewdirs = (rays_d / dir_lens)[...,None,:] # normalize the view direction, [N_rays, 1, 3]
-        view_embed = self.embedder_views(viewdirs) # [N_rays, 1, ve_dim]
-        
-        if not skip_coarse_rgb:
-            nn_out = self.model(pts_embed, view_embed.expand(*pts.shape[:-1],-1)) # rgb: [N_rays, N_samples, 3], sigma: [N_rays, N_samples, 1]  
-            r_out = volumetric_rendering(nn_out['rgb'], nn_out['sigma'], z_vals, dir_lens, self.white_bkgd)
+        N_rays = rays_o.shape[0]
+        if N_rays > self.chunk:
+            ret = [self.forward(rays_o[ci:ci+self.chunk], rays_d[ci:ci+self.chunk]) for ci in range(0, N_rays, self.chunk)]
+            ret = {
+                k: torch.cat([out[k] for out in ret], 0)
+                for k in ret[0]
+            }
+            return ret
         else:
-            nn_out = self.model(pts_embed) # only sigma: [N_rays, N_samples, 1]  
-            r_out = volumetric_rendering(None, nn_out['sigma'], z_vals, dir_lens, self.white_bkgd) # only weights
-        
-        if self.hierachical:
-            if not skip_coarse_rgb:
-                ret = {'rgb0': r_out['rgb'], 'disp0': r_out['disp'], 'acc0': r_out['acc']}
-            sample_out = self.point_sampler(rays_o, rays_d, z_vals, r_out['weights'])
-            pts, z_vals = sample_out # # [N_rays, N_samples_f, 3], [N_rays|1, N_samples_f]
-            pts_embed = self.embedder_pts(pts) # [N_rays, N_samples_f, pe_dim]
-            # reuse `view_embed`
-            nn_out = self.fine_model(pts_embed, view_embed.expand(*pts.shape[:-1],-1))
-            r_out = volumetric_rendering(nn_out['rgb'], nn_out['sigma'], z_vals, dir_lens, self.white_bkgd)
-        
-        ret = {'rgb': r_out['rgb'], 'disp': r_out['disp'], 'acc': r_out['acc'], **ret}
+            ret = {}
+            skip_coarse_rgb = (not self.training and self.fast_eval and not self.hierachical)
 
-        return ret
+            sample_out = self.point_sampler(rays_o, rays_d)
+            pts, z_vals = sample_out # [N_rays, N_samples, 3], [N_rays|1, N_samples]
+            pts_embed = self.embedder_pts(pts) # [N_rays, N_samples, pe_dim]
+
+            dir_lens = torch.norm(rays_d, dim=-1, keepdim=True) # [N_rays, 1]
+            viewdirs = (rays_d / dir_lens)[...,None,:] # normalize the view direction, [N_rays, 1, 3]
+            view_embed = self.embedder_views(viewdirs) # [N_rays, 1, ve_dim]
+            
+            if not skip_coarse_rgb:
+                nn_out = self.model(pts_embed, view_embed.expand(*pts.shape[:-1],-1)) # rgb: [N_rays, N_samples, 3], sigma: [N_rays, N_samples, 1]  
+                r_out = volumetric_rendering(nn_out['rgb'], nn_out['sigma'], z_vals, dir_lens, self.white_bkgd)
+            else:
+                nn_out = self.model(pts_embed) # only sigma: [N_rays, N_samples, 1]  
+                r_out = volumetric_rendering(None, nn_out['sigma'], z_vals, dir_lens, self.white_bkgd) # only weights
+            
+            if self.hierachical:
+                if not skip_coarse_rgb:
+                    ret = {'rgb0': r_out['rgb'], 'disp0': r_out['disp'], 'acc0': r_out['acc']}
+                sample_out = self.point_sampler(rays_o, rays_d, z_vals, r_out['weights'])
+                pts, z_vals = sample_out # # [N_rays, N_samples_f, 3], [N_rays|1, N_samples_f]
+                pts_embed = self.embedder_pts(pts) # [N_rays, N_samples_f, pe_dim]
+                # reuse `view_embed`
+                nn_out = self.fine_model(pts_embed, view_embed.expand(*pts.shape[:-1],-1))
+                r_out = volumetric_rendering(nn_out['rgb'], nn_out['sigma'], z_vals, dir_lens, self.white_bkgd)
+            
+            ret = {'rgb': r_out['rgb'], 'disp': r_out['disp'], 'acc': r_out['acc'], **ret}
+
+            return ret
 
 

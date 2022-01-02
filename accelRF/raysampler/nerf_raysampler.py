@@ -1,3 +1,4 @@
+from typing import Optional
 import torch
 import numpy as np
 from .base import BaseRaySampler
@@ -28,7 +29,10 @@ class NeRFRaySampler(BaseRaySampler):
         precrop: bool=False,
         precrop_frac: float=0.5,
         precrop_iters: int=500,
-        device: torch.device='cpu'
+        device: torch.device='cpu',
+        rank: int=-1,
+        n_replica: int=1,
+        seed: Optional[int]=None
         ) -> None:
         
         super().__init__(dataset, N_rand, length, device)
@@ -41,7 +45,16 @@ class NeRFRaySampler(BaseRaySampler):
         if full_rendering: 
             assert use_batching==False and precrop==False
             self.length = len(self.dataset)
-        
+        # for distributed settings
+        self.rng = torch.Generator(device=device)
+        self.n_replica = n_replica
+        self.rank = 0
+        if rank >= 0:
+            self.rank = rank
+            self.rng.manual_seed(0)
+        if seed is not None:
+            self.rng.manual_seed(seed)
+        #
         H, W, focal = self.dataset.get_hwf()
 
         if self.use_batching:
@@ -56,7 +69,7 @@ class NeRFRaySampler(BaseRaySampler):
             rays_rgb = torch.stack([rays_o, rays_d, self.dataset.imgs], 0) # [ro+rd+rgb, N, H, W, 3]
             self.rays_rgb = torch.reshape(rays_rgb, [3,-1,3]) # [ro+rd+rgb, N*H*W, 3]
             print('shuffle rays')
-            self.shuffle_inds = torch.randperm(self.rays_rgb.shape[1], device=self.device)
+            self.shuffle_inds = torch.randperm(self.rays_rgb.shape[1], generator=self.rng, device=device)
             print('done')
             self.i_batch = 0
         
@@ -102,20 +115,20 @@ class NeRFRaySampler(BaseRaySampler):
         if not self.full_rendering:
             if self.use_batching:
                 # Random over all images
-                batch_inds = self.shuffle_inds[self.i_batch:self.i_batch+self.N_rand]
+                batch_inds = self.shuffle_inds[self.i_batch+self.rank*self.N_rand:self.i_batch+(self.rank+1)*self.N_rand]
                 batch = self.rays_rgb[:, batch_inds] # [3, B, 2+1]
                 output['rays_o'], output['rays_d'], output['gt_rgb'] = batch[0], batch[1], batch[2]
                 cam_viewdir = None
-                self.i_batch += self.N_rand
+                self.i_batch += self.N_rand * self.n_replica
                 if self.i_batch >= self.rays_rgb.shape[1]:
                     print("Shuffle data after an epoch!")
-                    self.shuffle_inds = torch.randperm(self.rays_rgb.shape[1], device=self.device)
+                    self.shuffle_inds = torch.randperm(self.rays_rgb.shape[1], generator=self.rng, device=self.device)
                     self.i_batch = 0
             else:
                 if self.precrop and index >= self.precrop_iters:
                     self.disable_precrop()
                     print('disable precrop!')
-                img_i = torch.randint(len(self.dataset), ())
+                img_i = torch.randint(len(self.dataset), (), generator=self.rng)
                 img_dict = self.dataset[img_i]
                 pose = img_dict['pose'][:3,:4]
                 cam_viewdir = img_dict['pose'][:3,2]
@@ -125,7 +138,8 @@ class NeRFRaySampler(BaseRaySampler):
                 # To avoid manually setting numpy random seed for ender user when num_workers > 1, 
                 # replace np.random.choice with torch.randperm
                 # np.random.choice(self.coords.shape[0], size=[self.N_rand], replace=False)
-                select_inds = torch.randperm(self.coords.shape[0])[:self.N_rand]  # (N_rand,)
+                rand_inds = torch.randperm(self.coords.shape[0], generator=self.rng) # (len_shape, 1)
+                select_inds = rand_inds[self.rank*self.N_rand:(self.rank+1)*self.N_rand]  # (N_rand,)
                 select_coords = self.coords[select_inds].long()  # (N_rand, 2)
                 output['rays_o'] = rays_o[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
                 output['rays_d'] = rays_d[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)

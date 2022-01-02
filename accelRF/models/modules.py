@@ -36,12 +36,5 @@ class PositionalEncoding(nn.Module):
 
         embed = embed.flatten(-2) # [..., in_ch * ( 2*N_freqs?(+1) )]
         return embed
-    
-    # add two fake state_dict function to bypass saving/loading PE's parameters
-    def state_dict(self, *args, **kwargs):
-        return OrderedDict()
-
-    def load_state_dict(self, *args, **kwargs):
-        pass
 
     

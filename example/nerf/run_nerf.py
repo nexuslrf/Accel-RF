@@ -1,22 +1,9 @@
-# this is minimal implementation of orginal NeRF, for the Test purpose.
-# TODO more options will be gradually added. 🙂
-# To run this example: python example/nerf/run_nerf.py --config example/configs/lego.txt
-
-# there are two ways to render final output:
-# 1. batchify NN inference, then concate them and feed them to render
-# 2. process NN + render batch by batch 
-# Which is better? 🤔
-# I choose the second option to better utilize multi-GPU)
-# TODO Write program both ways and test speed.
 import os, sys
-import logging
-
-logging.basicConfig(level=logging.INFO)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from opts import config_parser
 from tqdm import tqdm, trange
-
+import imageio
 import torch
 import numpy as np
 import torch.nn as nn
@@ -24,6 +11,8 @@ import torch.optim as optim
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+
 from accelRF.datasets import Blender
 from accelRF.raysampler import NeRFRaySampler
 from accelRF.pointsampler import NeRFPointSampler
@@ -33,24 +22,26 @@ from accelRF.render.nerf_render import NeRFRender
 parser = config_parser()
 args = parser.parse_args()
 n_gpus = torch.cuda.device_count()
+n_replica = 1
 device = 'cuda'
+cudnn.benchmark = True
+savedir = os.path.join(args.basedir, args.expname)
+
 if args.local_rank >= 0:
     dist.init_process_group(backend='nccl', init_method="env://")
     device = f'cuda:{args.local_rank}'
     n_replica = n_gpus
-cudnn.benchmark = True
-savedir = os.path.join(args.basedir, args.expname)
+
+if args.local_rank <= 0:
+    tb_writer = SummaryWriter(os.path.join(args.basedir, 'summaries', args.expname))
+# def metrics TODO metrics can be pre-defined in a accelRF collection
+img2mse = lambda x, y : torch.mean((x - y) ** 2)
+mse2psnr = torch.no_grad()(lambda x : -10. * torch.log10(x))
+to8b = lambda x : (255*np.clip(x,0,1)).astype(np.uint8)
 
 def main():
     # prepare data
     dataset = Blender(args.datadir, args.scene, args.half_res, args.testskip, args.white_bkgd)
-
-    train_raysampler = NeRFRaySampler(dataset.get_sub_set('train'), args.N_rand, args.N_iters,
-        use_batching=(not args.no_batching), use_ndc=(not args.no_ndc), precrop=(args.precrop_iters > 0), 
-        precrop_frac=args.precrop_frac, precrop_iters=args.precrop_iters, rank=args.local_rank, n_replica=n_replica)
-    test_raysampler = NeRFRaySampler(dataset.get_sub_set('test'), full_rendering=True)
-    train_rayloader = DataLoader(train_raysampler, num_workers=1, pin_memory=True)
-    test_rayloader = DataLoader(test_raysampler, num_workers=1, pin_memory=True)
     # create model
     input_ch, input_ch_views = (2*args.multires+1)*3, (2*args.multires_views+1)*3
     nerf_render = NeRFRender(
@@ -63,7 +54,8 @@ def main():
             D=args.netdepth, W=args.netwidth, skips=[4]), # coarse model
         fine_model=NeRF(in_ch_pts=input_ch, in_ch_dir=input_ch_views, 
             D=args.netdepth, W=args.netwidth, skips=[4]) if args.N_importance > 0 else None,
-        white_bkgd=args.white_bkgd
+        white_bkgd=args.white_bkgd,
+        chunk=args.chunk * n_gpus
     )
     if args.local_rank >=0:
         nerf_render = torch.nn.parallel.DistributedDataParallel(nerf_render.to(device), device_ids=[args.local_rank])
@@ -86,20 +78,25 @@ def main():
             optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         except:
             pass
+        nerf_render.load_state_dict(ckpt['state_dict'])
 
     lr_sched = optim.lr_scheduler.ExponentialLR(optimizer, 0.1**(1/(args.lrate_decay*1000)), last_epoch=start-1)
-    # def metrics TODO metrics can be pre-defined in a accelRF collection
-    img2mse = lambda x, y : torch.mean((x - y) ** 2)
-    mse2psnr = torch.no_grad()(lambda x : -10. * torch.log10(x))
+
+    # prepare dataloader
+    train_raysampler = NeRFRaySampler(dataset.get_sub_set('train'), args.N_rand, args.N_iters-start,
+        use_batching=(not args.no_batching), use_ndc=(not args.no_ndc), precrop=(args.precrop_iters > 0), 
+        precrop_frac=args.precrop_frac, precrop_iters=args.precrop_iters, rank=args.local_rank, n_replica=n_replica)
+    test_raysampler = NeRFRaySampler(dataset.get_sub_set('test'), full_rendering=True)
+    val_raysampler = NeRFRaySampler(dataset.get_sub_set('val'), full_rendering=True)
+    train_rayloader = DataLoader(train_raysampler, num_workers=1, pin_memory=True)
+    test_rayloader = DataLoader(test_raysampler, num_workers=1, pin_memory=True)
 
     train_ray_iter = iter(train_rayloader)
-    chunk = args.chunk * n_gpus
     for i in trange(start, args.N_iters):
         # get one training batch
         ray_batch = next(train_ray_iter)
         rays_o, rays_d = ray_batch['rays_o'][0].to(device), ray_batch['rays_d'][0].to(device)
         gt_rgb = ray_batch['gt_rgb'][0].to(device)
-        # TODO you can add an inner loop for further batchifying.
         render_out = nerf_render(rays_o, rays_d)
         img_loss = img2mse(gt_rgb, render_out['rgb'])
         psnr = mse2psnr(img_loss)
@@ -117,24 +114,32 @@ def main():
 
         if i%args.i_print==0:
             tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()}")
-
+            if args.local_rank <= 0:
+                tb_writer.add_scalar('loss', loss, i)
+                tb_writer.add_scalar('psnr', psnr, i)
+                if 'rgb0' in render_out:
+                    tb_writer.add_scalar('psnr0', psnr0, i)
+                if i%args.i_img==0:
+                    # Log a rendered validation view to Tensorboard
+                    img_i=torch.randint(len(val_raysampler), ())
+                    ray_batch = val_raysampler[img_i]
+                    rays_o, rays_d = ray_batch['rays_o'].to(device), ray_batch['rays_d'].to(device)
+                    gt_rgb = ray_batch['gt_rgb'].to(device)
+                    with torch.no_grad():
+                        render_out = nerf_render(rays_o, rays_d)
+                    psnr = mse2psnr(img2mse(render_out['rgb'], gt_rgb))
+                    tb_writer.add_scalar('psnr_eval', psnr, i)
+                    H, W, _ = dataset.get_hwf()
+                    tb_writer.add_image('gt_rgb', gt_rgb.reshape(H,W,-1), i, dataformats="HWC")
+                    tb_writer.add_image('rgb', to8b(render_out['rgb'].cpu().numpy()).reshape(H,W,-1), i, dataformats='HWC')
+                    tb_writer.add_image('disp', render_out['disp'].reshape(H,W), i, dataformats="HW")
+                    tb_writer.add_image('acc', render_out['acc'].reshape(H,W), i, dataformats="HW")
+                    if 'rbg0' in render_out:
+                        tb_writer.add_image('rgb0', to8b(render_out['rgb0'].cpu().numpy()).reshape(H,W,-1), i, dataformats='HWC')
+                        tb_writer.add_image('disp0', render_out['disp0'].reshape(H,W), i, dataformats="HW")
+                    
         if i%args.i_testset == 0 and i > 0:
-            nerf_render.eval()
-            for i, ray_batch in enumerate(tqdm(test_rayloader)):
-                rays_o, rays_d = ray_batch['rays_o'][0].to(device), ray_batch['rays_d'][0].to(device)
-                gt_rgb = ray_batch['gt_rgb'][0].to(device)
-
-                N_rays = rays_o.shape[0]
-                with torch.no_grad():
-                    render_out = [nerf_render(rays_o[ci:ci+chunk], rays_d[ci:ci+chunk]) for ci in range(0, N_rays, chunk)]
-                render_out = {
-                    k: torch.cat([out[k] for out in render_out], 0)
-                    for k in render_out[0]
-                }
-                img_loss = img2mse(gt_rgb, render_out['rgb'])
-                psnr = mse2psnr(img_loss)
-                tqdm.write(f"[Test] #: {i} PSNR: {psnr.item()}")
-            nerf_render.train()
+            eval(nerf_render, test_rayloader, dataset.get_hwf()[:2], os.path.join(savedir, f'testset_{i:06d}'))
         
         if (i+1)%args.i_weights==0 and args.local_rank <= 0:
             path = os.path.join(savedir, f'{i+1:06d}.pt')
@@ -144,6 +149,18 @@ def main():
                 'optimizer_state_dict': optimizer.state_dict(),
             }, path)
         
+def eval(nerf_render, rayloader, img_hw, testsavedir):
+    nerf_render.eval()
+    for i, ray_batch in enumerate(tqdm(rayloader)):
+        rays_o, rays_d = ray_batch['rays_o'][0].to(device), ray_batch['rays_d'][0].to(device)
+        gt_rgb = ray_batch['gt_rgb'][0].to(device)
+        with torch.no_grad():
+            render_out = nerf_render(rays_o, rays_d)
+        psnr = mse2psnr(img2mse(gt_rgb, render_out['rgb']))
+        imageio.imwrite(os.path.join(testsavedir, f'{i:03d}.png'), 
+                    to8b(render_out['rgb'].cpu().numpy()).reshape(*img_hw,-1))
+        tqdm.write(f"[Test] #: {i} PSNR: {psnr.item()}")
+    nerf_render.train()
 
 if __name__ == '__main__':
     print("Args: \n", args, "\n", "-"*40)

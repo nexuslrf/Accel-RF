@@ -28,17 +28,15 @@ def config_parser():
                         help='learning rate')
     parser.add_argument("--lrate_decay", type=int, default=250, 
                         help='exponential learning rate decay (in 1000 steps)')
-    parser.add_argument("--chunk", type=int, default=1024*32, 
+    parser.add_argument("--chunk", type=int, default=1024*16, 
                         help='number of rays processed in parallel, decrease if running out of memory')
-    parser.add_argument("--netchunk", type=int, default=1024*64, 
-                        help='number of pts sent through network in parallel, decrease if running out of memory')
     parser.add_argument("--no_batching", action='store_true', 
                         help='only take random rays from 1 image at a time')
     parser.add_argument("--no_reload", action='store_true', 
                         help='do not reload weights from saved ckpt')
     parser.add_argument("--ft_path", type=str, default=None, 
-                        help='specific weights npy file to reload for coarse network')
-    parser.add_argument("--N_iters", type=int, default=20000,
+                        help='specific weights file to reload for network')
+    parser.add_argument("--N_iters", type=int, default=200000,
                         help='the number of training iterations')
 
     # rendering options
@@ -71,6 +69,9 @@ def config_parser():
                         help='number of steps to train on central crops')
     parser.add_argument("--precrop_frac", type=float,
                         default=.5, help='fraction of img taken for central crops') 
+    # distributed options
+    parser.add_argument("--local_rank", type=int, default=-1, 
+                        help='node rank for distributed training')
 
     # dataset options
     parser.add_argument("--dataset_type", type=str, default='llff', 

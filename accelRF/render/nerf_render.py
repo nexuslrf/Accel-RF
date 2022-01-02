@@ -95,6 +95,13 @@ class NeRFRender(nn.Module):
         self.white_bkgd = white_bkgd
         self.fast_eval = fast_eval
 
+    def jit_script(self):
+        self.embedder_pts = torch.jit.script(self.embedder_pts)
+        self.embedder_views = torch.jit.script(self.embedder_views)
+        self.model = torch.jit.script(self.model)
+        self.fine_model = torch.jit.script(self.fine_model) if self.hierachical else None
+        return self
+
 
     def forward(self, rays_o: Tensor, rays_d: Tensor):
         '''

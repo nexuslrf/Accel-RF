@@ -30,18 +30,19 @@ class NeRFRaySampler(BaseRaySampler):
         precrop_frac: float=0.5,
         precrop_iters: int=500,
         device: torch.device='cpu',
+        start_epoch: int=0,
         rank: int=-1,
         n_replica: int=1,
         seed: Optional[int]=None
         ) -> None:
         
-        super().__init__(dataset, N_rand, length, device)
+        super().__init__(dataset, N_rand, length-start_epoch, device)
         self.use_batching = use_batching
         self.use_ndc = use_ndc
         self.full_rendering = full_rendering
         self.precrop = precrop
         self.precrop_frac = precrop_frac
-        self.precrop_iters = precrop_iters
+        self.precrop_iters = precrop_iters - start_epoch
         if full_rendering: 
             assert use_batching==False and precrop==False
             self.length = len(self.dataset)
@@ -75,7 +76,7 @@ class NeRFRaySampler(BaseRaySampler):
         
         else:
             # the current solution for iters after `precrop_iters`
-            if self.precrop: 
+            if self.precrop and self.precrop_iters > 0: 
                 dH = int(H//2 * self.precrop_frac)
                 dW = int(W//2 * self.precrop_frac)
                 self.coords = torch.stack(

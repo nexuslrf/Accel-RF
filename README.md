@@ -28,7 +28,7 @@ The whole NeRF training workflow can be decomposed into major 5 modules/steps.
 
 **PointSampler**
 * Based on rays_o and rays_d from RaySampler, PointSampler samples xyz points along the ray, and these sampled points are finally feeded into NN models for radiance field prediction.
-* In importance-based sampling also relies on the predicted weights from the coarse NeRF model.
+* Importance-based sampling also relies on the predicted weights from the coarse NeRF model.
 * Currently supported sampling methods:
     * [x] Uniformly sampling along the ray --> coarse sampling.
     * [x] Importance sampling --> hierarchical sampling (fine)

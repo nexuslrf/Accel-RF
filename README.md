@@ -12,6 +12,8 @@
 
 The whole NeRF training workflow can be decomposed into major 5 modules/steps.
 
+<img src="https://bl3301files.storage.live.com/y4mN7eU2PVVVde5wP6Xn5TyEBXmzrUoJfD17CgiNFlc9hc5Ft_KzurWWkDM_DgvB7S7r-AXabyXbLq7mczXN25MQObCN4ItSuWce4qclRfPMwTa3HkPsUt3QGjYW4pM0aEw9eFN0DLIdwnIsIEf0WUxooyf-I9QcpwrkXNMUwQ6sLq8JN3cRoBs3aDQJX_BUWzT?width=3854&height=609&cropmode=none"/>
+
 **Datasets**
 
 * NeRF's dataset is a set of images (with camera poses) around a scene. Unlike datasets for other DL training tasks, this dataset does not output data that can be directly used by NN models. Given an index i, the dataset just outputs i-th image and its corresponding camera pose. The outputs are then be processed by RaySampler and PointSampler sequentially.

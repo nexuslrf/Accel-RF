@@ -83,7 +83,7 @@ def main():
     lr_sched = optim.lr_scheduler.ExponentialLR(optimizer, 0.1**(1/(args.lrate_decay*1000)), last_epoch=start-1)
 
     # prepare dataloader
-    train_raysampler = NeRFRaySampler(dataset.get_sub_set('train'), args.N_rand, args.N_iters-start,
+    train_raysampler = NeRFRaySampler(dataset.get_sub_set('train'), args.N_rand, args.N_iters, start_epoch=start,
         use_batching=(not args.no_batching), use_ndc=(not args.no_ndc), precrop=(args.precrop_iters > 0), 
         precrop_frac=args.precrop_frac, precrop_iters=args.precrop_iters, rank=args.local_rank, n_replica=n_replica)
     test_raysampler = NeRFRaySampler(dataset.get_sub_set('test'), full_rendering=True)
@@ -134,7 +134,7 @@ def main():
                     tb_writer.add_image('rgb', to8b(render_out['rgb'].cpu().numpy()).reshape(H,W,-1), i, dataformats='HWC')
                     tb_writer.add_image('disp', render_out['disp'].reshape(H,W), i, dataformats="HW")
                     tb_writer.add_image('acc', render_out['acc'].reshape(H,W), i, dataformats="HW")
-                    if 'rbg0' in render_out:
+                    if 'rgb0' in render_out:
                         tb_writer.add_image('rgb0', to8b(render_out['rgb0'].cpu().numpy()).reshape(H,W,-1), i, dataformats='HWC')
                         tb_writer.add_image('disp0', render_out['disp0'].reshape(H,W), i, dataformats="HW")
                     
@@ -150,6 +150,7 @@ def main():
             }, path)
         
 def eval(nerf_render, rayloader, img_hw, testsavedir):
+    os.makedirs(testsavedir, exist_ok=True) 
     nerf_render.eval()
     for i, ray_batch in enumerate(tqdm(rayloader)):
         rays_o, rays_d = ray_batch['rays_o'][0].to(device), ray_batch['rays_d'][0].to(device)

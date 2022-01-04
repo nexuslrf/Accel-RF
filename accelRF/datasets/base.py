@@ -1,4 +1,5 @@
 from typing import Dict, List, Tuple
+import copy
 import torch
 import torch.utils.data as data
 
@@ -32,3 +33,9 @@ class BaseDataset(data.Dataset):
         if self.imgs is not None:
             self.imgs = self.imgs.to(device)
         return self
+
+    def get_sub_set(self, split_set: str):
+        sub_set = copy.copy(self)
+        sub_set.imgs = sub_set.imgs[self.i_split[split_set]]
+        sub_set.poses = sub_set.poses[self.i_split[split_set]]
+        return sub_set

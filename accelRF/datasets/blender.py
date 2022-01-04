@@ -136,16 +136,9 @@ class Blender(BaseDataset):
         # ])
 
         self.imgs = torch.FloatTensor(imgs)
-        self.poses = torch.FloatTensor(poses)
+        self.poses = torch.FloatTensor(poses) # [N, 3, 4]
 
-    
-    def get_sub_set(self, split_set: str):
-        sub_set = copy.copy(self)
-        sub_set.imgs = sub_set.imgs[self.i_split[split_set]]
-        sub_set.poses = sub_set.poses[self.i_split[split_set]]
-        return sub_set
-
-    def get_render_set(self, phi: float=30.0, radius: float=4.0, n_frame: int=40):
+    def get_render_set(self, n_frame: int=40, phi: float=30.0, radius: float=4.0):
         render_poses = torch.stack([pose_spherical(angle, -phi, radius)
                                 for angle in np.linspace(-180,180,n_frame+1)[:-1]], 0)
         render_set = copy.copy(self)

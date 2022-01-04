@@ -144,12 +144,11 @@ def poses_avg(poses):
 def render_path_spiral(c2w, up, rads, focal, zdelta, zrate, rots, N):
     render_poses = []
     rads = np.array(list(rads) + [1.])
-    hwf = c2w[:,4:5]
     
     for theta in np.linspace(0., 2. * np.pi * rots, N+1)[:-1]:
         c = np.dot(c2w[:3,:4], np.array([np.cos(theta), -np.sin(theta), -np.sin(theta*zrate), 1.]) * rads) 
         z = normalize(c - np.dot(c2w[:3,:4], np.array([0,0,-focal, 1.])))
-        render_poses.append(np.concatenate([viewmatrix(z, up, c), hwf], 1))
+        render_poses.append(viewmatrix(z, up, c))
     return render_poses
 
 def recenter_poses(poses):
@@ -193,37 +192,21 @@ def spherify_poses(poses, bds):
     sc = 1./rad
     poses_reset[:,:3,3] *= sc
     bds *= sc
-    rad *= sc
     
-    centroid = np.mean(poses_reset[:,:3,3], 0)
-    zh = centroid[2]
-    radcircle = np.sqrt(rad**2-zh**2)
-    new_poses = []
-    
-    for th in np.linspace(0.,2.*np.pi, 120):
-        camorigin = np.array([radcircle * np.cos(th), radcircle * np.sin(th), zh])
-        up = np.array([0,0,-1.])
-
-        vec2 = normalize(camorigin)
-        vec0 = normalize(np.cross(vec2, up))
-        vec1 = normalize(np.cross(vec2, vec0))
-        pos = camorigin
-        p = np.stack([vec0, vec1, vec2, pos], 1)
-        new_poses.append(p)
-
-    new_poses = np.stack(new_poses, 0)
-    new_poses = np.concatenate([new_poses, np.broadcast_to(poses[0,:3,-1:], new_poses[:,:3,-1:].shape)], -1)
     poses_reset = np.concatenate([poses_reset[:,:3,:4], np.broadcast_to(poses[0,:3,-1:], poses_reset[:,:3,-1:].shape)], -1)
     
-    return poses_reset, new_poses, bds
+    return poses_reset, bds
 
 
 class LLFF(BaseDataset):
     def __init__(
-        self, root: str, scene: str, factor: int=8, recenter: bool=True,
-        bd_factor: float=.75, spherify: bool=False, path_zflat: bool=False
+        self, root: str, scene: str, factor: int=8, recenter: bool=True, use_ndc: bool=True,
+        bd_factor: float=.75, spherify: bool=False, n_holdout: int=0
     ) -> None:
         super().__init__()
+        self.spherify = spherify
+        self.use_ndc = use_ndc
+
         basedir = os.path.join(root, scene)
         poses, bds, imgs = _load_data(basedir, factor=factor)
         print('Loaded', basedir, bds.min(), bds.max())
@@ -241,21 +224,74 @@ class LLFF(BaseDataset):
 
         if recenter:
             poses = recenter_poses(poses)
-            
         if spherify:
-            poses, render_poses, bds = spherify_poses(poses, bds)
+            poses, bds = spherify_poses(poses, bds)
 
+        imgs = imgs.astype(np.float32)
+        poses = poses.astype(np.float32) # [N, 3, 5] 
+        print('Data:')
+        print(poses.shape, imgs.shape, bds.shape)
+        # convert np array to torch tensor
+        self.imgs = torch.from_numpy(imgs)
+        self.poses = torch.from_numpy(poses[:,:3,:4]) # [N, 3, 4]
+        self.H, self.W, self.focal = poses[0,:3,-1]
+        self.H, self.W = int(self.H), int(self.W)
+        self.bds = bds
+        
+        # split holdout sets
+        if n_holdout == 0:
+            c2w = poses_avg(poses)
+            dists = np.sum(np.square(c2w[:3,3] - poses[:,:3,3]), -1)
+            i_test = [np.argmin(dists)]
+            print('HOLDOUT view is', i_test)
+        else:
+            print('Auto LLFF holdout,', n_holdout)
+            i_test = np.arange(imgs.shape[0])[::n_holdout]
+        i_val = i_test
+        i_train = np.array([i for i in np.arange(int(imgs.shape[0])) if
+                        (i not in i_test and i not in i_val)])
+        self.i_split = {
+            'train': i_train,
+            'val': i_val,
+            'test': i_test
+        }
+        print('DEFINING BOUNDS')
+        if not use_ndc:
+            self.near = np.ndarray.min(bds) * .9
+            self.far = np.ndarray.max(bds) * 1.
+        else:
+            self.near = 0.
+            self.far = 1.
+        print('NEAR FAR', self.near, self.far)
+
+    def get_render_set(self, n_frame: int=120, path_zflat: bool=False):
+        poses = self.poses.numpy()
+        if self.spherify:
+            centroid = np.mean(poses[:,:3,3], 0)
+            zh = centroid[2]
+            radcircle = np.sqrt(1-zh**2)
+            render_poses = []
+            
+            for th in np.linspace(0.,2.*np.pi, n_frame):
+                camorigin = np.array([radcircle * np.cos(th), radcircle * np.sin(th), zh])
+                up = np.array([0,0,-1.])
+
+                vec2 = normalize(camorigin)
+                vec0 = normalize(np.cross(vec2, up))
+                vec1 = normalize(np.cross(vec2, vec0))
+                pos = camorigin
+                p = np.stack([vec0, vec1, vec2, pos], 1)
+                render_poses.append(p)
+
+            render_poses = np.stack(render_poses, 0).astype(np.float32) # [N, 3, 4]
         else:
             c2w = poses_avg(poses)
-            print('recentered', c2w.shape)
-            print(c2w[:3,:4])
-
+            print('recentered', c2w.shape, c2w[:3,:4])
             ## Get spiral
             # Get average pose
             up = normalize(poses[:, :3, 1].sum(0))
-
             # Find a reasonable "focus depth" for this dataset
-            close_depth, inf_depth = bds.min()*.9, bds.max()*5.
+            close_depth, inf_depth = self.bds.min()*.9, self.bds.max()*5.
             dt = .75
             mean_dz = 1./(((1.-dt)/close_depth + dt/inf_depth))
             focal = mean_dz
@@ -266,41 +302,19 @@ class LLFF(BaseDataset):
             tt = poses[:,:3,3] # ptstocam(poses[:3,3,:].T, c2w).T
             rads = np.percentile(np.abs(tt), 90, 0)
             c2w_path = c2w
-            N_views = 120
             N_rots = 2
             if path_zflat:
-    #             zloc = np.percentile(tt, 10, 0)[2]
+                # zloc = np.percentile(tt, 10, 0)[2]
                 zloc = -close_depth * .1
                 c2w_path[:3,3] = c2w_path[:3,3] + zloc * c2w_path[:3,2]
                 rads[2] = 0.
                 N_rots = 1
-                N_views/=2
-
+                n_frame/=2
             # Generate poses for spiral path
-            render_poses = render_path_spiral(c2w_path, up, rads, focal, zdelta, zrate=.5, rots=N_rots, N=N_views)
-            
-        render_poses = np.array(render_poses).astype(np.float32)
-        c2w = poses_avg(poses)
-        print('Data:')
-        print(poses.shape, imgs.shape, bds.shape)
-        
-        dists = np.sum(np.square(c2w[:3,3] - poses[:,:3,3]), -1)
-        i_test = np.argmin(dists)
-        print('HOLDOUT view is', i_test)
-        
-        imgs = imgs.astype(np.float32)
-        poses = poses.astype(np.float32) # [N, 3, 5] 
-        
-        # convert np array to torch tensor
-        self.imgs = torch.from_numpy(imgs)
-        self.poses = torch.from_numpy(poses[:,:3,:4]) # [N, 3, 4]
-        self.H, self.W, self.focal = poses[0,:3,-1]
-        self.H, self.W = int(self.H), int(self.W)
-        
-        # return imgs, poses, bds, render_poses, i_test
-        
-    def get_sub_set(self):
-        pass
-
-    def get_render_set(self):
-        pass
+            render_poses = render_path_spiral(
+                c2w_path, up, rads, focal, zdelta, zrate=.5, rots=N_rots, N=n_frame)
+            render_poses = np.array(render_poses).astype(np.float32)
+        render_set = copy.copy(self)
+        render_set.imgs = None
+        render_set.poses = torch.from_numpy(render_poses)
+        return render_set

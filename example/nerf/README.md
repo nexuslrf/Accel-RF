@@ -2,6 +2,8 @@
 
 This is a minimal implementation of orginal NeRF, for the Test purpose.
 
+This implementatation is 10% faster than [nerf-pytorch](https://github.com/yenchenlin/nerf-pytorch)
+
 **TODO** more options will be gradually added. 🙂
 
 To run this example: 

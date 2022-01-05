@@ -13,7 +13,7 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from accelRF.datasets import Blender
+from accelRF.datasets import Blender, LLFF
 from accelRF.raysampler import NeRFRaySampler
 from accelRF.pointsampler import NeRFPointSampler
 from accelRF.models import PositionalEncoding, NeRF
@@ -41,7 +41,11 @@ to8b = lambda x : (255*np.clip(x,0,1)).astype(np.uint8)
 
 def main():
     # prepare data
-    dataset = Blender(args.datadir, args.scene, args.half_res, args.testskip, args.white_bkgd)
+    if args.dataset_type == 'blender':
+        dataset = Blender(args.datadir, args.scene, args.half_res, args.testskip, args.white_bkgd)
+    elif args.dataset_type == 'llff':
+        dataset = LLFF(args.datadir, args.scene, args.factor, spherify=args.spherify, 
+            use_ndc=(not args.no_ndc), n_holdout=args.llffhold)
     # create model
     input_ch, input_ch_views = (2*args.multires+1)*3, (2*args.multires_views+1)*3
     nerf_render = NeRFRender(
@@ -55,7 +59,8 @@ def main():
         fine_model=NeRF(in_ch_pts=input_ch, in_ch_dir=input_ch_views, 
             D=args.netdepth, W=args.netwidth, skips=[4]) if args.N_importance > 0 else None,
         white_bkgd=args.white_bkgd,
-        chunk=args.chunk * n_gpus
+        chunk=args.chunk * n_gpus,
+        use_ndc=(not args.no_ndc), hwf=dataset.get_hwf()
     )
     if args.local_rank >=0:
         nerf_render = torch.nn.parallel.DistributedDataParallel(nerf_render.to(device), device_ids=[args.local_rank])
@@ -83,9 +88,10 @@ def main():
     lr_sched = optim.lr_scheduler.ExponentialLR(optimizer, 0.1**(1/(args.lrate_decay*1000)), last_epoch=start-1)
 
     # prepare dataloader
-    train_raysampler = NeRFRaySampler(dataset.get_sub_set('train'), args.N_rand, args.N_iters, start_epoch=start,
-        use_batching=(not args.no_batching), use_ndc=(not args.no_ndc), precrop=(args.precrop_iters > 0), 
-        precrop_frac=args.precrop_frac, precrop_iters=args.precrop_iters, rank=args.local_rank, n_replica=n_replica)
+    train_raysampler = NeRFRaySampler(
+        dataset.get_sub_set('train'), args.N_rand, args.N_iters, use_batching=(not args.no_batching), 
+        precrop=(args.precrop_iters > 0), precrop_frac=args.precrop_frac, precrop_iters=args.precrop_iters, 
+        start_epoch=start, rank=args.local_rank, n_replica=n_replica) # ~~use_ndc=(not args.no_ndc)~~
     test_raysampler = NeRFRaySampler(dataset.get_sub_set('test'), full_rendering=True)
     val_raysampler = NeRFRaySampler(dataset.get_sub_set('val'), full_rendering=True)
     train_rayloader = DataLoader(train_raysampler, num_workers=1, pin_memory=True)

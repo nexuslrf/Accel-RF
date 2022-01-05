@@ -11,11 +11,20 @@ from .base import BaseDataset
 
 __all__ = ['Blender']
 
-# TODO add auto data downloading?
+# TODO maybe you can add auto data downloading?
 
-# TODO this bounding box values are copy from KiloNeRF
+# this bounding box values are copy from KiloNeRF
+# https://github.com/creiser/kilonerf/tree/master/data/nsvf/Synthetic_NeRF/
+# Note: unless specified, these bounding box values are not used in normal NeRF model.
 bounding_box = {
-
+    'lego':   [-0.67, -1.2, -0.37, 0.67, 1.2, 1.03],
+    'hotdog': [-1.28349, -1.34831, -0.376072, 1.28349, 1.21868, 0.473294],
+    'ficus': [-0.501468, -0.894687, -1.08433, 0.622253, 0.653115, 1.22525],
+    'drum':  [-1.20256, -0.849854, -0.595211, 1.20256, 1.05901, 1.08823],
+    'chair': [-0.85, -0.8, -1.1, 0.85, 0.85, 1.1],
+    'material': [-1.19772, -0.882472, -0.311908, 1.14904, 1.05773, 0.311908],
+    'mic':  [-1.39144, -0.963949, -0.822599, 0.963776, 1.26331, 1.29303],
+    'ship': [-1.38519, -1.37695, -0.636088, 1.46763, 1.47587, 0.79542]
 }
 
 trans_t = lambda t : torch.Tensor([

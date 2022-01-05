@@ -2,6 +2,7 @@ from typing import Dict, List, Tuple
 import copy
 import torch
 import torch.utils.data as data
+from torch import Tensor
 
 class BaseDataset(data.Dataset):
     def __init__(self) -> None:
@@ -14,6 +15,16 @@ class BaseDataset(data.Dataset):
     def get_hwf(self) -> Tuple:
         f = self.downsample_factor
         return self.H//f, self.W//f, self.focal/f
+
+    def get_K(self) -> Tensor:
+        '''
+        Convert hwf into a 3x3 matrix
+        '''
+        return torch.tensor([
+            [self.focal, 0, 0.5*self.W],
+            [0, self.focal, 0.5*self.H],
+            [0,          0,          1]
+        ], dtype=torch.float32)
 
     def __len__(self) -> int:
         return len(self.poses)    

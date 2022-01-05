@@ -160,10 +160,11 @@ class NeRFRaySampler(BaseRaySampler):
         # if self.use_viewdirs:
         #     output['viewdirs'] = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
         
-        if self.use_ndc:
-            # for forward facing scenes
-            output['rays_o'], output['rays_d'] = \
-                ndc_rays(*self.dataset.get_hwf(), 1., output['rays_o'], output['rays_d'])
+        # # Update: after removing viewdirs from RaySampler, you cannot process ndc here.
+        # if self.use_ndc: 
+        #     # for forward facing scenes
+        #     output['rays_o'], output['rays_d'] = \
+        #         ndc_rays(*self.dataset.get_hwf(), 1., output['rays_o'], output['rays_d'])
 
         return output
 

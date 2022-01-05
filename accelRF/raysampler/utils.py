@@ -27,6 +27,7 @@ def get_rays_np(H, W, focal, c2w):
     rays_o = np.broadcast_to(c2w[:3,-1], np.shape(rays_d))
     return rays_o, rays_d
 
+@torch.jit.script
 def ndc_rays(H: int, W: int, focal: float, near: float, rays_o: torch.Tensor, rays_d: torch.Tensor):
     # Shift ray origins to near plane
     t = -(near + rays_o[...,2]) / rays_d[...,2]

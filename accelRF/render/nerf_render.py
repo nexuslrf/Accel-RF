@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from accelRF.raysampler.utils import ndc_rays
+
 
 # volumetric rendering should be differentialable.
 @torch.jit.script
@@ -81,6 +83,8 @@ class NeRFRender(nn.Module):
         fine_model: Optional[nn.Module]=None,
         white_bkgd: bool=False,
         fast_eval: bool=True,
+        use_ndc: bool=False,
+        hwf: Optional[Tuple]=None,
         chunk: int=1024*16
         ):
         super().__init__()
@@ -96,6 +100,9 @@ class NeRFRender(nn.Module):
         self.white_bkgd = white_bkgd
         self.fast_eval = fast_eval
         self.chunk = chunk
+        self.use_ndc = use_ndc
+        self.hwf = hwf
+        if use_ndc: assert hwf is not None, "NDC need hwf."
 
     def jit_script(self):
         self.embedder_pts = torch.jit.script(self.embedder_pts)
@@ -123,12 +130,15 @@ class NeRFRender(nn.Module):
             ret = {}
             skip_coarse_rgb = (not self.training and self.fast_eval and not self.hierachical)
 
-            sample_out = self.point_sampler(rays_o, rays_d)
-            pts, z_vals = sample_out # [N_rays, N_samples, 3], [N_rays|1, N_samples]
-            pts_embed = self.embedder_pts(pts) # [N_rays, N_samples, pe_dim]
-
             dir_lens = torch.norm(rays_d, dim=-1, keepdim=True) # [N_rays, 1]
             viewdirs = (rays_d / dir_lens)[...,None,:] # normalize the view direction, [N_rays, 1, 3]
+            if self.use_ndc:
+                rays_o, rays_d = ndc_rays(*self.hwf, 1., rays_o, rays_d)
+            # start point sampling
+            sample_out = self.point_sampler(rays_o, rays_d)
+            pts, z_vals = sample_out # [N_rays, N_samples, 3], [N_rays|1, N_samples]
+            
+            pts_embed = self.embedder_pts(pts) # [N_rays, N_samples, pe_dim]
             view_embed = self.embedder_views(viewdirs) # [N_rays, 1, ve_dim]
             
             if not skip_coarse_rgb:

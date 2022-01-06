@@ -128,8 +128,8 @@ class NeRFPointSampler(nn.Module):
         self.perturb = perturb
         self.det = (perturb==0.)
         self.lindisp = lindisp
-        self.init_z_vals = get_init_z_vals(near, far, N_samples, lindisp)
-        self.init_z_vals = nn.parameter.Parameter(self.init_z_vals, requires_grad=False)
+        init_z_vals = get_init_z_vals(near, far, N_samples, lindisp)
+        self.register_buffer('init_z_vals', init_z_vals)
         
     @torch.no_grad()
     def forward(self, rays_o: Tensor, rays_d: Tensor, 

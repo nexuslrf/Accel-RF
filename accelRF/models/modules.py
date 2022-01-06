@@ -12,12 +12,12 @@ class PositionalEncoding(nn.Module):
         self.freq_last = freq_last
 
         if log_sampling:
-            freq_bands = 2.**torch.linspace(0., (N_freqs-1), steps=N_freqs)
+            self.freq_bands = 2.**torch.linspace(0., (N_freqs-1), steps=N_freqs)
         else:
-            freq_bands = torch.linspace(2.**0., 2.**(N_freqs-1), steps=N_freqs)
+            self.freq_bands = torch.linspace(2.**0., 2.**(N_freqs-1), steps=N_freqs)
         
         self.half_pi = np.pi / 2
-        self.register_buffer('freq_bands', freq_bands)
+        self.freq_bands = nn.parameter.Parameter(self.freq_bands, requires_grad=False)
 
     @torch.no_grad()
     def forward(self, x: Tensor):

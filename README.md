@@ -7,6 +7,7 @@
 * [x] Modularized design.
 * [x] Support JIT optimization.
 * [x] Support multi-GPU training.
+* [ ] amp features **WIP**
 	
 ### Framework:
 

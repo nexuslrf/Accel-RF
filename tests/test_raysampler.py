@@ -20,15 +20,18 @@ class TestNeRFRaySampler(unittest.TestCase):
 
     # @unittest.SkipTest
     def test_no_batching(self):
-        raysampler = NeRFRaySampler(self.dataset)
+        raysampler = PerViewRaySampler(self.dataset)
         logging.info('no batching')
         # logging.info(f'raysampler: {raysampler.coords.shape}')
         out = raysampler[0]
         self.assertEqual(out['rays_o'].shape, self.batch_shape)
         self.assertEqual(out['rays_d'].shape, self.batch_shape)
         self.assertEqual(out['gt_rgb'].shape, self.batch_shape)
+        # test N_views
+        raysampler_v2 = PerViewRaySampler(self.dataset, N_views=2)
+        self.assertEqual(raysampler_v2[0]['rays_d'].shape, torch.Size([2048*2, 3]))
     
-    # @unittest.SkipTest
+    @unittest.SkipTest
     def test_use_batching(self):
         raysampler = NeRFRaySampler(self.dataset, use_batching=True)
         logging.info('use batching')
@@ -37,6 +40,29 @@ class TestNeRFRaySampler(unittest.TestCase):
         self.assertEqual(out['rays_o'].shape, self.batch_shape)
         self.assertEqual(out['rays_d'].shape, self.batch_shape)
         self.assertEqual(out['gt_rgb'].shape, self.batch_shape)
+
+    @unittest.SkipTest
+    def test_attribute_update_with_dataloader(self):
+        """To see difference, the __getitem__ function's return is modified into:
+        gt_rgb has different value when precrop is True / False
+        """
+        for i in range(3):
+            raysampler = PerViewRaySampler(self.dataset, length=40, precrop=True, precrop_iters=5)
+            logging.info(f'{i} workers')
+            rayloader = DataLoader(raysampler, batch_size=1, num_workers=i, pin_memory=True)
+            for i, batch in enumerate(rayloader):
+                c_sum = batch['coords'].sum()
+                logging.info(f'batch: {c_sum}')
+
+    @unittest.SkipTest
+    def test_full_rendering(self):
+        raysampler = NeRFRaySampler(self.dataset, full_rendering=True, precrop=False)
+        logging.info('rendering full image')
+        tar_shape = torch.Size([800*800, 3])
+        out = raysampler[0]
+        self.assertEqual(out['rays_o'].shape, tar_shape)
+        self.assertEqual(out['rays_d'].shape, tar_shape)
+        self.assertEqual(out['gt_rgb'].shape, tar_shape)
 
     # test the functionality on GPU
     # it is not recommended to run on GPU, unless you have large GPU mem
@@ -61,29 +87,6 @@ class TestNeRFRaySampler(unittest.TestCase):
         self.assertEqual(out['rays_o'].shape, self.batch_shape)
         self.assertEqual(out['rays_d'].shape, self.batch_shape)
         self.assertEqual(out['gt_rgb'].shape, self.batch_shape)
-
-    # @unittest.SkipTest
-    def test_attribute_update_with_dataloader(self):
-        """To see difference, the __getitem__ function's return is modified into:
-        gt_rgb has different value when precrop is True / False
-        """
-        for i in range(3):
-            raysampler = PerViewRaySampler(self.dataset, length=40, precrop=True, precrop_iters=5)
-            logging.info(f'{i} workers')
-            rayloader = DataLoader(raysampler, batch_size=1, num_workers=i, pin_memory=True)
-            for i, batch in enumerate(rayloader):
-                c_sum = batch['coords'].sum()
-                logging.info(f'batch: {c_sum}')
-
-    # @unittest.SkipTest
-    def test_full_rendering(self):
-        raysampler = NeRFRaySampler(self.dataset, full_rendering=True, precrop=False)
-        logging.info('rendering full image')
-        tar_shape = torch.Size([800*800, 3])
-        out = raysampler[0]
-        self.assertEqual(out['rays_o'].shape, tar_shape)
-        self.assertEqual(out['rays_d'].shape, tar_shape)
-        self.assertEqual(out['gt_rgb'].shape, tar_shape)
 
 if __name__ == '__main__':
     unittest.main(exit=False)

@@ -66,6 +66,7 @@ class PerViewRaySampler(BaseRaySampler):
         dataset, 
         N_rand: int=2048,
         length: int=1000,
+        N_views: int=1,
         precrop: bool=False,
         precrop_frac: float=0.5,
         precrop_iters: int=500,
@@ -78,6 +79,7 @@ class PerViewRaySampler(BaseRaySampler):
         
         super().__init__(
             dataset, N_rand, length-start_epoch, device, rank, n_replica, seed)
+        self.N_views = N_views
         self.precrop = precrop
         self.precrop_frac = precrop_frac
         self.precrop_iters = precrop_iters - start_epoch
@@ -119,28 +121,29 @@ class PerViewRaySampler(BaseRaySampler):
             rays_d: Tensor, sampled ray directions, [N_rays, 3]
             gt_rgb: Tensor, ground truth color superized learning [N_rays, 3]
         '''
-        output = {}
+        output = {'rays_o': [], 'rays_d': [], 'gt_rgb': []}
         if self.precrop and index >= self.precrop_iters:
             self.disable_precrop()
             print('disable precrop!')
-        img_i = torch.randint(len(self.dataset), (), generator=self.rng, device=self.device)
-        img_dict = self.dataset[img_i]
-        pose = img_dict['pose'][:3,:4]
-        cam_viewdir = img_dict['pose'][:3,2]
-        target = img_dict['gt_img'] # if 'gt_img' in img_dict else None
-        rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose)
+        for _ in range(self.N_views):
+            img_i = torch.randint(len(self.dataset), (), generator=self.rng, device=self.device)
+            img_dict = self.dataset[img_i]
+            pose = img_dict['pose'][:3,:4]
+            cam_viewdir = img_dict['pose'][:3,2]
+            target = img_dict['gt_img'] # if 'gt_img' in img_dict else None
+            rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose)
 
-        # To avoid manually setting numpy random seed for ender user when num_workers > 1, 
-        # replace np.random.choice with torch.randperm
-        # np.random.choice(self.coords.shape[0], size=[self.N_rand], replace=False)
-        rand_inds = torch.randperm(self.coords.shape[0], generator=self.rng, device=self.device) # (len_shape, 1)
-        select_inds = rand_inds[self.rank*self.N_rand:(self.rank+1)*self.N_rand]  # (N_rand,)
-        select_coords = self.coords[select_inds].long()  # (N_rand, 2)
-        output['rays_o'] = rays_o[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
-        output['rays_d'] = rays_d[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
-        output['gt_rgb'] = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
-        output['coords'] = self.coords # just for debug
-
+            # To avoid manually setting numpy random seed for ender user when num_workers > 1, 
+            # replace np.random.choice with torch.randperm
+            # np.random.choice(self.coords.shape[0], size=[self.N_rand], replace=False)
+            rand_inds = torch.randperm(self.coords.shape[0], generator=self.rng, device=self.device) # (len_shape, 1)
+            select_inds = rand_inds[self.rank*self.N_rand:(self.rank+1)*self.N_rand]  # (N_rand,)
+            select_coords = self.coords[select_inds].long()  # (N_rand, 2)
+            output['rays_o'].append(rays_o[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
+            output['rays_d'].append(rays_d[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
+            output['gt_rgb'].append(target[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
+        output = {k: torch.cat(output[k], 0) for k in output} # (N_views*N_rand, 3)
+        # output['coords'] = self.coords # just for debug
         return output
     
 
@@ -187,8 +190,9 @@ class NeRFRaySampler(data.Dataset):
                 dataset, N_rand, length, device, start_epoch, rank, n_replica, seed
             )
         else:
+            N_views = 1
             self.raysampler = PerViewRaySampler(
-                dataset, N_rand, length, precrop, precrop_frac, precrop_iters, 
+                dataset, N_rand, length, N_views, precrop, precrop_frac, precrop_iters, 
                 device, start_epoch, rank, n_replica, seed
             )
 

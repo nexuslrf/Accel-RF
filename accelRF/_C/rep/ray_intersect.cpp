@@ -52,9 +52,17 @@ std::tuple< at::Tensor, at::Tensor, at::Tensor > aabb_intersect(at::Tensor rays_
   CHECK_CUDA(rays_d);
   CHECK_CUDA(points);
   /*
-  rays: (N_rays, 3)
-  points: (s_x, s_y, s_z, 3)
+  Args:
+    rays: (N_rays, 3)
+    points: (..., 3)
+  Return:
+    inds: *1d* index of points.
+    max_depth, min_depth.
+    
+  Note: this function has wiser implementations, if points is a regular dense grid (4D Tensor).
+  TODO@nexuslrf: decide whether to further improve it or not based on later use cases.
   */
+
   // assert(points.dim()==4 && "Points should be a 4-D tensor.");
   // int s_x = points.size(0), s_y = points.size(1), s_z = points.size(2);
   // int max_hit = s_x + s_y + s_z, n_pts = s_x * s_y * s_z;

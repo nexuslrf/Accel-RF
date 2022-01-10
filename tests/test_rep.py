@@ -2,6 +2,7 @@ import unittest
 import os, sys
 import logging
 import time
+
 logging.basicConfig(level=logging.INFO)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -45,7 +46,7 @@ class TestVoxelGrid(unittest.TestCase):
         voxelsize = 0.4
         rays_o, rays_d = get_rays(H, W, f, pose) # 800,800,3
         rays_o, rays_d = rays_o.reshape(-1, 3), rays_d.reshape(-1, 3)
-        vox_grid = VoxelGrid(self.bbox_pt, voxelsize)
+        vox_grid = VoxelGrid(self.bbox_pt, voxelsize).to('cuda')
         pts = vox_grid.center_points # 
         n_rays = rays_o.shape[0]
         # version 1
@@ -73,6 +74,10 @@ class TestVoxelGrid(unittest.TestCase):
         max_hit = inds_x.shape[-1]
         self.assertEqual(
             ((min_depth.reshape(-1, n_max)[:,:max_hit]-min_depth_x)**2).sum(), 0)
+        # class method version
+        inds_m, min_depth_m, max_depth_m, hits = vox_grid.ray_intersect(rays_o_, rays_d_)
+        self.assertEqual(inds_x.sum() - inds_m.sum(), 0)
+        print(inds_m.shape, hits.shape)
 
 
 if __name__ == '__main__':

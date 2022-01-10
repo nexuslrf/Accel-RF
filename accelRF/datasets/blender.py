@@ -16,16 +16,18 @@ __all__ = ['Blender']
 # this bounding box values are copy from KiloNeRF
 # https://github.com/creiser/kilonerf/tree/master/data/nsvf/Synthetic_NeRF/
 # Note: unless specified, these bounding box values are not used in normal NeRF model.
+# format: [min_x,y,z, max_x,y,z]
 bounding_box = {
-    'lego':   [-0.67, -1.2, -0.37, 0.67, 1.2, 1.03],
-    'hotdog': [-1.28349, -1.34831, -0.376072, 1.28349, 1.21868, 0.473294],
-    'ficus': [-0.501468, -0.894687, -1.08433, 0.622253, 0.653115, 1.22525],
-    'drum':  [-1.20256, -0.849854, -0.595211, 1.20256, 1.05901, 1.08823],
-    'chair': [-0.85, -0.8, -1.1, 0.85, 0.85, 1.1],
-    'material': [-1.19772, -0.882472, -0.311908, 1.14904, 1.05773, 0.311908],
-    'mic':  [-1.39144, -0.963949, -0.822599, 0.963776, 1.26331, 1.29303],
-    'ship': [-1.38519, -1.37695, -0.636088, 1.46763, 1.47587, 0.79542]
+    'lego':   torch.tensor([-0.67, -1.2, -0.37, 0.67, 1.2, 1.03]),
+    'hotdog': torch.tensor([-1.28349, -1.34831, -0.376072, 1.28349, 1.21868, 0.473294]),
+    'ficus': torch.tensor([-0.501468, -0.894687, -1.08433, 0.622253, 0.653115, 1.22525]),
+    'drum':  torch.tensor([-1.20256, -0.849854, -0.595211, 1.20256, 1.05901, 1.08823]),
+    'chair': torch.tensor([-0.85, -0.8, -1.1, 0.85, 0.85, 1.1]),
+    'material': torch.tensor([-1.19772, -0.882472, -0.311908, 1.14904, 1.05773, 0.311908]),
+    'mic':  torch.tensor([-1.39144, -0.963949, -0.822599, 0.963776, 1.26331, 1.29303]),
+    'ship': torch.tensor([-1.38519, -1.37695, -0.636088, 1.46763, 1.47587, 0.79542]),
 }
+#######
 
 trans_t = lambda t : torch.Tensor([
     [1,0,0,0],
@@ -68,9 +70,11 @@ class Blender(BaseDataset):
 
     def __init__(
         self, root: str, scene: str, 
-        half_res: bool = False, testskip: int = 1, white_bkgd: bool = False
+        half_res: bool = False, testskip: int = 1, white_bkgd: bool = False,
+        with_bbox: bool = False
     )->None:
         super().__init__()
+        self.scene = scene
         basedir = os.path.join(root, scene)
         splits = ['train', 'val', 'test']
         metas = {}
@@ -125,11 +129,6 @@ class Blender(BaseDataset):
             imgs = imgs_half_res
 
         self.near, self.far = 2., 6.
-        if imgs.shape[-1] == 4:
-            if white_bkgd:
-                imgs = imgs[...,:3]*imgs[...,-1:] + (1.-imgs[...,-1:])
-            else:
-                imgs = imgs[...,:3]*imgs[...,-1:]
         
         self.H, self.W = H, W
         self.i_split = {
@@ -138,14 +137,25 @@ class Blender(BaseDataset):
             'test': i_split[2]
         }
         self.focal = focal
+        # represent as an intrinsic matrix, might be useful later.
         # self.K = np.array([
         #     [focal, 0, 0.5*W],
         #     [0, focal, 0.5*H],
         #     [0, 0, 1]
         # ])
 
-        self.imgs = torch.FloatTensor(imgs)
+        if imgs.shape[-1] == 4:
+            # if keep_alpha:
+            #     self.alpha = torch.FloatTensor(imgs[...,-1:]) # [N, H, W, 1]
+            if white_bkgd:
+                imgs = imgs[...,:3]*imgs[...,-1:] + (1.-imgs[...,-1:])
+            else:
+                imgs = imgs[...,:3]*imgs[...,-1:]
+
+        self.imgs = torch.FloatTensor(imgs) # [N, H, W, 3]
         self.poses = torch.FloatTensor(poses) # [N, 3, 4]
+        if with_bbox:
+            self.bbox = bounding_box[scene]
 
     def get_render_set(self, n_frame: int=40, phi: float=30.0, radius: float=4.0):
         render_poses = torch.stack([pose_spherical(angle, -phi, radius)

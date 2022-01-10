@@ -46,19 +46,33 @@ class TestVoxelGrid(unittest.TestCase):
         rays_o, rays_d = get_rays(H, W, f, pose) # 800,800,3
         rays_o, rays_d = rays_o.reshape(-1, 3), rays_d.reshape(-1, 3)
         vox_grid = VoxelGrid(self.bbox_pt, voxelsize)
-        pts = vox_grid.center_points.reshape(-1, 3) # 
+        pts = vox_grid.center_points # 
+        n_rays = rays_o.shape[0]
+        # version 1
         G = 1024
         N = rays_o.shape[0]
         K = (N-1)//G + 1 # 625
-        rays_o = rays_o.reshape(G, K, 3).contiguous().cuda()
-        rays_d = rays_d.reshape(G, K, 3).contiguous().cuda()
-        pts = pts[None,:].expand(G, *pts.shape).contiguous().cuda()
+        rays_o_ = rays_o.reshape(G, K, 3).contiguous().cuda()
+        rays_d_ = rays_d.reshape(G, K, 3).contiguous().cuda()
+        pts_ = pts.reshape(1,-1,3).contiguous().cuda()
         n_max = 60
-        inds, min_depth, max_depth = rep_ext.aabb_intersect(
-            rays_o, rays_d, pts, voxelsize, n_max)
+        inds, min_depth, max_depth = rep_ext.aabb_intersect_old(
+            rays_o_, rays_d_, pts_, voxelsize, n_max)
         print(inds.shape)
         print(max_depth.shape)
         print(min_depth.shape)
+        # version 2
+        rays_o_ = rays_o.contiguous().cuda()
+        rays_d_ = rays_d.contiguous().cuda()
+        pts_ = pts.contiguous().cuda()
+        inds_x, min_depth_x, max_depth_x = rep_ext.aabb_intersect(
+            rays_o_, rays_d_, pts_, voxelsize, sum(pts_.shape[:3]))
+        print(inds_x.shape)
+        print(max_depth_x.shape)
+        print(min_depth_x.shape)
+        max_hit = inds_x.shape[-1]
+        self.assertEqual(
+            ((min_depth.reshape(-1, n_max)[:,:max_hit]-min_depth_x)**2).sum(), 0)
 
 
 if __name__ == '__main__':

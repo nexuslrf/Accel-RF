@@ -131,7 +131,7 @@ class PerViewRaySampler(BaseRaySampler):
             pose = img_dict['pose'][:3,:4]
             cam_viewdir = img_dict['pose'][:3,2]
             target = img_dict['gt_img'] # if 'gt_img' in img_dict else None
-            rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose)
+            rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose) # TODO optimize it
 
             # To avoid manually setting numpy random seed for ender user when num_workers > 1, 
             # replace np.random.choice with torch.randperm

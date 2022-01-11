@@ -8,7 +8,7 @@ from .utils import get_rays
 class BaseRaySampler(data.Dataset):
     def __init__(
         self,
-        dataset: BaseDataset,
+        dataset: Optional[BaseDataset],
         N_rand: int,
         length: Optional[int]=None,
         device: torch.device='cpu',

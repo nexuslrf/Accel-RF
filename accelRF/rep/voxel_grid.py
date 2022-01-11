@@ -1,13 +1,14 @@
-from typing import List
+from typing import List, Tuple
 import numpy as np
 import torch
 from torch import Tensor
 import torch.nn as nn
+from .base import Explicit3D
 from .._C.rep import _ext
 
 MAX_DEPTH = 10000.0
 
-class VoxelGrid(nn.Module):
+class VoxelGrid(Explicit3D):
     '''
     Let's start with a simple dense voxel grid.
     '''
@@ -16,7 +17,7 @@ class VoxelGrid(nn.Module):
         bbox: Tensor,
         voxel_size: float,
         use_corner: bool=True,
-        device: torch.device='cuda'
+        # device: torch.device='cuda'
         ):
         '''
         bbox2voxel: https://github.com/facebookresearch/NSVF/fairnr/modules/encoder.py#L1053
@@ -32,7 +33,7 @@ class VoxelGrid(nn.Module):
         '''
         super().__init__()
         self.voxel_size = voxel_size
-        self.device = device
+        # self.device = device
         v_min, v_max = bbox[:3], bbox[3:]
         steps = ((v_max - v_min) / voxel_size).round().long() + 1
         # note the difference between torch.meshgrid and np.meshgrid.
@@ -50,6 +51,8 @@ class VoxelGrid(nn.Module):
             # self.corner_points = corner_points.to(device)
             self.register_buffer('corner_coords', corner_coords)
             self.register_buffer('corner_points', corner_points)
+        self.occupancy = torch.ones(*center_points.shape[:-1], dtype=torch.bool)
+        self.side_len =steps
 
     def ray_intersect(self, rays_o: Tensor, rays_d: Tensor):
         '''
@@ -57,20 +60,20 @@ class VoxelGrid(nn.Module):
             rays_o, Tensor, (N_rays, 3)
             rays_d, Tensor, (N_rays, 3)
         Return:
-            pts_idx?
-            min_depth?
-            max_depth?
+            pts_idx, Tensor, (N_rays, )
+            t_min?
+            t_max?
         '''
-        max_hit = sum(self.center_points.shape[:3])
-        pts_idx_1d, min_depth, max_depth = _ext.aabb_intersect(
+        max_hit = self.side_len.sum().item()
+        pts_idx_1d, t_min, t_max = _ext.aabb_intersect(
             rays_o.contiguous(), rays_d.contiguous(), 
             self.center_points.contiguous(), self.voxel_size, max_hit)
-        min_depth.masked_fill_(pts_idx_1d.eq(-1), MAX_DEPTH)
-        min_depth, sort_idx = min_depth.sort(dim=-1)
-        max_depth = max_depth.gather(-1, sort_idx)
+        t_min.masked_fill_(pts_idx_1d.eq(-1), MAX_DEPTH)
+        t_min, sort_idx = t_min.sort(dim=-1)
+        t_max = t_max.gather(-1, sort_idx)
         pts_idx_1d = pts_idx_1d.gather(-1, sort_idx)
         hits = pts_idx_1d.ne(-1).any(-1)
-        return pts_idx_1d, min_depth, max_depth, hits
+        return pts_idx_1d, t_min, t_max, hits
 
 
 

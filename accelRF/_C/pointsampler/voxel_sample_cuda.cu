@@ -12,8 +12,8 @@
 #include "cutil_math.h"  // required for float3 vector math
 
 
-__global__ void uniform_ray_sampling_kernel(
-            int b, int num_rays, 
+__global__ void voxel_uniform_sample_kernel(
+            int b, int rays_per_blk, 
             int max_hits,
             int max_steps,
             float step_size,
@@ -25,21 +25,21 @@ __global__ void uniform_ray_sampling_kernel(
             float *__restrict__ sampled_depth,
             float *__restrict__ sampled_dists) {
   
-  int batch_index = blockIdx.x;
+  int blk_index = blockIdx.x;
   int index = threadIdx.x;
   int stride = blockDim.x;
 
-  pts_idx += batch_index * num_rays * max_hits;
-  min_depth += batch_index * num_rays * max_hits;
-  max_depth += batch_index * num_rays * max_hits;
+  pts_idx += blk_index * rays_per_blk * max_hits;
+  min_depth += blk_index * rays_per_blk * max_hits;
+  max_depth += blk_index * rays_per_blk * max_hits;
 
-  uniform_noise += batch_index * num_rays * max_steps;
-  sampled_idx += batch_index * num_rays * max_steps;
-  sampled_depth += batch_index * num_rays * max_steps;
-  sampled_dists += batch_index * num_rays * max_steps;
+  uniform_noise += blk_index * rays_per_blk * max_steps;
+  sampled_idx += blk_index * rays_per_blk * max_steps;
+  sampled_depth += blk_index * rays_per_blk * max_steps;
+  sampled_dists += blk_index * rays_per_blk * max_steps;
 
   // loop over all rays
-  for (int j = index; j < num_rays; j += stride) {
+  for (int j = index; j < rays_per_blk; j += stride) {
     int H = j * max_hits, K = j * max_steps;
     int s = 0, ucur = 0, umin = 0, umax = 0;
     float last_min_depth, last_max_depth, curr_depth;
@@ -105,10 +105,9 @@ __global__ void uniform_ray_sampling_kernel(
   }
 }
 
-__global__ void inverse_cdf_sampling_kernel(
-    int b, int num_rays, 
-    int max_hits,
-    int max_steps,
+__global__ void voxel_cdf_sample_kernel(
+    int b, int rays_per_blk, int n_rays,
+    int max_hits, int max_steps,
     float fixed_step_size,
     const int *__restrict__ pts_idx,
     const float *__restrict__ min_depth,
@@ -120,23 +119,13 @@ __global__ void inverse_cdf_sampling_kernel(
     float *__restrict__ sampled_depth,
     float *__restrict__ sampled_dists) {
 
-    int batch_index = blockIdx.x;
-    int index = threadIdx.x;
+    int blk_index = blockIdx.x;
+    int offset = blk_index * rays_per_blk;
+    int index = threadIdx.x + offset;
     int stride = blockDim.x;
 
-    pts_idx += batch_index * num_rays * max_hits;
-    min_depth += batch_index * num_rays * max_hits;
-    max_depth += batch_index * num_rays * max_hits;
-    probs += batch_index * num_rays * max_hits;
-    steps += batch_index * num_rays;
-
-    uniform_noise += batch_index * num_rays * max_steps;
-    sampled_idx += batch_index * num_rays * max_steps;
-    sampled_depth += batch_index * num_rays * max_steps;
-    sampled_dists += batch_index * num_rays * max_steps;
-
     // loop over all rays
-    for (int j = index; j < num_rays; j += stride) {
+    for (int j = index; j < offset + rays_per_blk && j < n_rays; j += stride) {
         int H = j * max_hits, K = j * max_steps;
         int curr_bin = 0, s = 0;  // current index (bin)
 
@@ -201,28 +190,28 @@ __global__ void inverse_cdf_sampling_kernel(
     }
 }
 
-void uniform_ray_sampling_kernel_wrapper(
-  int b, int num_rays, int max_hits, int max_steps, float step_size,
+void voxel_uniform_sample_kernel_wrapper(
+  int b, int rays_per_blk, int max_hits, int max_steps, float step_size,
   const int *pts_idx, const float *min_depth, const float *max_depth, const float *uniform_noise,
   int *sampled_idx, float *sampled_depth, float *sampled_dists) {
   
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-  uniform_ray_sampling_kernel<<<b, opt_n_threads(num_rays), 0, stream>>>(
-      b, num_rays, max_hits, max_steps, step_size, pts_idx, 
+  voxel_uniform_sample_kernel<<<b, opt_n_threads(rays_per_blk), 0, stream>>>(
+      b, rays_per_blk, max_hits, max_steps, step_size, pts_idx, 
       min_depth, max_depth, uniform_noise, sampled_idx, sampled_depth, sampled_dists);
   
   CUDA_CHECK_ERRORS();
 }
 
-void inverse_cdf_sampling_kernel_wrapper(
-    int b, int num_rays, int max_hits, int max_steps, float fixed_step_size,
+void voxel_cdf_sample_kernel_wrapper(
+    int b, int rays_per_blk, int n_rays, int max_hits, int max_steps, float fixed_step_size,
     const int *pts_idx, const float *min_depth, const float *max_depth,
     const float *uniform_noise, const float *probs, const float *steps,
     int *sampled_idx, float *sampled_depth, float *sampled_dists) {
     
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    inverse_cdf_sampling_kernel<<<b, opt_n_threads(num_rays), 0, stream>>>(
-        b, num_rays, max_hits, max_steps, fixed_step_size,
+    voxel_cdf_sample_kernel<<<b, opt_n_threads(rays_per_blk), 0, stream>>>(
+        b, rays_per_blk, n_rays, max_hits, max_steps, fixed_step_size,
         pts_idx, min_depth, max_depth, uniform_noise, probs, steps, 
         sampled_idx, sampled_depth, sampled_dists);
     

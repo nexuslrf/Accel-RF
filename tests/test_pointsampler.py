@@ -21,39 +21,39 @@ class TestNeRFPointSampler(unittest.TestCase):
         self.rays_d = torch.randn(self.N_rays, 3)
 
     @unittest.SkipTest
-    def test_coarse_sample_with_init_z(self):
+    def test_uniform_sample_with_init_z(self):
         # CPU version
         init_z_vals = torch.linspace(0, 1, steps=self.N_samples)
-        pts, _ = aps.coarse_sample(self.N_samples, 1., 6., self.rays_o, self.rays_d, init_z_vals=init_z_vals)
+        pts, _ = aps.uniform_sample(self.N_samples, 1., 6., self.rays_o, self.rays_d, init_z_vals=init_z_vals)
         self.assertEqual(pts.shape, self.tar_shape)
 
     @unittest.SkipTest
-    def test_coarse_sample_without_init_z(self):
+    def test_uniform_sample_without_init_z(self):
         # CPU version
-        pts, _ = aps.coarse_sample(self.N_samples, 1., 6., self.rays_o, self.rays_d)
+        pts, _ = aps.uniform_sample(self.N_samples, 1., 6., self.rays_o, self.rays_d)
         self.assertEqual(pts.shape, self.tar_shape)
 
     @unittest.SkipTest
-    def test_coarse_sample_with_init_z_cuda(self):
+    def test_uniform_sample_with_init_z_cuda(self):
         # GPU version
         init_z_vals = torch.linspace(0, 1, steps=self.N_samples).cuda()
-        pts, _ = aps.coarse_sample(self.N_samples, 1., 6., self.rays_o.cuda(), self.rays_d.cuda(), init_z_vals=init_z_vals)
+        pts, _ = aps.uniform_sample(self.N_samples, 1., 6., self.rays_o.cuda(), self.rays_d.cuda(), init_z_vals=init_z_vals)
         self.assertEqual(pts.shape, self.tar_shape)
 
     @unittest.SkipTest
-    def test_coarse_sample_without_init_z_cuda(self):
+    def test_uniform_sample_without_init_z_cuda(self):
         # GPU version
-        pts, _ = aps.coarse_sample(self.N_samples, 1., 6., self.rays_o.cuda(), self.rays_d.cuda())
+        pts, _ = aps.uniform_sample(self.N_samples, 1., 6., self.rays_o.cuda(), self.rays_d.cuda())
         self.assertEqual(pts.shape, self.tar_shape)
 
     @unittest.SkipTest
-    def test_coarse_sample_with_perturb(self):
-        pts, _ = aps.coarse_sample(self.N_samples, 1., 6., self.rays_o, self.rays_d, perturb=1.)
+    def test_uniform_sample_with_perturb(self):
+        pts, _ = aps.uniform_sample(self.N_samples, 1., 6., self.rays_o, self.rays_d, perturb=1.)
         self.assertEqual(pts.shape, self.tar_shape)
 
     @unittest.SkipTest
-    def test_coarse_sample_jit(self):
-        logging.info(aps.coarse_sample.code)
+    def test_uniform_sample_jit(self):
+        logging.info(aps.uniform_sample.code)
 
 
     @unittest.SkipTest
@@ -79,12 +79,12 @@ class TestNeRFPointSampler(unittest.TestCase):
         self.assertEqual((weights.grad - expected_grad).norm(), 0)
     
     @unittest.SkipTest
-    def test_fine_sample(self):
+    def test_cdf_sample(self):
         z_vals = torch.linspace(0, 1, steps=self.N_samples)[None,:]#.cuda()
         weights = torch.rand(self.N_rays, z_vals.shape[-1])#.cuda()
-        pts, _ = aps.fine_sample(self.N_importance, self.rays_o, self.rays_d, z_vals, weights, 0)
+        pts, _ = aps.cdf_sample(self.N_importance, self.rays_o, self.rays_d, z_vals, weights, 0)
         self.assertEqual(pts.shape, torch.Size([self.N_rays, self.N_samples+self.N_importance, 3]))
-        # logging.info(aps.fine_sample.graph)
+        # logging.info(aps.cdf_sample.graph)
     
     def test_wrapper(self):
         device = 'cuda'

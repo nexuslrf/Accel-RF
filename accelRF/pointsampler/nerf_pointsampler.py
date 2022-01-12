@@ -15,7 +15,7 @@ def get_init_z_vals(
     return init_z_vals
 
 @torch.jit.script
-def coarse_sample(
+def uniform_sample(
     N_samples: int,
     near: float, far: float,
     rays_o: Tensor, rays_d: Tensor,
@@ -58,14 +58,16 @@ def coarse_sample(
 
 @torch.jit.script
 # @torch.no_grad()
-def fine_sample(
-    N_importance: int,
+def cdf_sample(
+    N_samples: int,
     rays_o: Tensor, rays_d: Tensor,
     z_vals: Tensor, weights: Tensor,
     det: bool=True
     ):
     '''
-    fine_sample relies on (i) coarse_sample's results (ii) output of coarse MLP
+    cdf_sample relies on (i) coarse_sample's results (ii) output of coarse MLP
+    In this function, each ray will have the same number of sampled points, 
+    there's a other version cdf_sample function, that sample variable points for different rays.
     Args:
         rays_o: Tensor, the orgin of rays. [N_rays, 3]
         rays_d: Tensor, the direction of rays. [N_rays, 3]
@@ -73,13 +75,13 @@ def fine_sample(
         weights: Tensor, processed weights from MLP and vol rendering. [N_rays, N_samples]
     '''
     N_rays = weights.shape[0]
-    N_coarse_samples = z_vals.shape[1]
+    N_base_samples = z_vals.shape[1]
     z_vals_mid = .5 * (z_vals[...,1:] + z_vals[...,:-1]) 
 
-    # z_samples = sample_pdf(z_vals_mid, weights[...,1:-1], N_importance, det=det)
+    # z_samples = sample_pdf(z_vals_mid, weights[...,1:-1], N_samples, det=det)
     # unfold `sample_pdf` for more fusion opportunities..
     
-    # Get pdf
+    # Get pdf & cdf
     device = weights.device
     weights_ = weights[..., 1:-1] + 1e-5 # prevent nans
     pdf = weights_ / torch.sum(weights_, -1, keepdim=True)
@@ -88,17 +90,17 @@ def fine_sample(
 
     # Take uniform samples
     if det:
-        u = torch.linspace(0., 1., steps=N_importance, device=device)
-        u = u.expand(N_rays, N_importance)
+        u = torch.linspace(0., 1., steps=N_samples, device=device)
+        u = u.expand(N_rays, N_samples)
     else:
-        u = torch.rand(N_rays, N_importance, device=device)
+        u = torch.rand(N_rays, N_samples, device=device)
 
     # Invert CDF
     u = u.contiguous()
     inds = torch.searchsorted(cdf, u, right=True)
     below = (inds-1).clamp_min(0)
     above = inds.clamp_max(cdf.shape[-1]-1)
-    inds_g = torch.stack([below, above], -1)  # (batch, N_importance, 2)
+    inds_g = torch.stack([below, above], -1)  # (batch, N_samples, 2)
 
     # cdf_g = tf.gather(cdf, inds_g, axis=-1, batch_dims=len(inds_g.shape)-2)
     # bins_g = tf.gather(bins, inds_g, axis=-1, batch_dims=len(inds_g.shape)-2)
@@ -111,8 +113,8 @@ def fine_sample(
     t = (u-cdf_g[...,0])/denom
     z_samples = bins_g[...,0] + t * (bins_g[...,1]-bins_g[...,0])
     
-    z_vals, _ = torch.sort(torch.cat([z_vals.expand(N_rays, N_coarse_samples), z_samples], -1), -1)
-    pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None] # [N_rays, N_samples + N_importance, 3]
+    z_vals, _ = torch.sort(torch.cat([z_vals.expand(N_rays, N_base_samples), z_samples], -1), -1)
+    pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None] # [N_rays, N_samples + N_samples, 3]
 
     return pts, z_vals
 
@@ -136,10 +138,10 @@ class NeRFPointSampler(nn.Module):
             z_vals: Optional[Tensor]=None, weights: Optional[Tensor]=None):
 
         if weights is None:
-            pts, z_vals = coarse_sample(self.N_samples, self.near, self.far, 
+            pts, z_vals = uniform_sample(self.N_samples, self.near, self.far, 
                             rays_o, rays_d, self.perturb, init_z_vals=self.init_z_vals)
         else:
-            pts, z_vals = fine_sample(self.N_importance, 
+            pts, z_vals = cdf_sample(self.N_importance, 
                             rays_o, rays_d, z_vals, weights, det=self.det)
         return pts, z_vals
         

@@ -49,25 +49,22 @@ class VoxIntersectRaySampler(BaseRaySampler):
         rays_o, rays_d = [ray_batch[k][0].to(self.device) for k in ('rays_o', 'rays_d')] # [N_rays, 3]
         gt_rgb = ray_batch['gt_rgb'][0].to(self.device) if 'gt_rgb' in ray_batch else None
 
-        vox_idx, t_min, t_max, hits = self.vox_rep.ray_intersect(rays_o, rays_d)
+        vox_idx, t_near, t_far, hits = self.vox_rep.ray_intersect(rays_o, rays_d)
         if self.mask_sample:
             sampled_mask = masked_sample(hits, self.N_rand)
             vox_idx = vox_idx[sampled_mask]
-            t_min, t_max = t_min[sampled_mask], t_max[sampled_mask]
+            t_near, t_far = t_near[sampled_mask], t_far[sampled_mask]
             hits = hits[sampled_mask]
             rays_o, rays_d = rays_o[sampled_mask], rays_d[sampled_mask]
             gt_rgb = gt_rgb[sampled_mask] if gt_rgb is not None else None
 
-        vox_t_range = (t_max - t_min).masked_fill(vox_idx.eq(-1), 0) 
-        t_range = vox_t_range.sum(-1) # sum on n_hit per ray
-        vox_t_probs = vox_t_range / t_range[..., None]
+        out = {
+            'rays_o': rays_o, 'rays_d': rays_d, 
+            'vox_idx': vox_idx, 't_near': t_near, 't_far': t_far,
+            'hits': hits}
+        if gt_rgb is not None:
+            out['gt_rgb'] = gt_rgb
 
-        # steps = t_range / step_size # -> leave this to point sampler. 
-
-        # next step
-        # deal with hits.
-
-        # TODO identify the outputs based on pointsampler's need.
-        return None
+        return out 
 
 

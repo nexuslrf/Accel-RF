@@ -32,7 +32,16 @@ class TestVoxelGrid(unittest.TestCase):
         logging.info(vox_np.shape)
         vox_pt = utils.bbox2voxels(self.bbox_pt, 0.4)
         logging.info(vox_pt.shape)
+    
+    def test_voxel_grid_class(self):
+        vox_grid = VoxelGrid(self.bbox_pt, 0.4).to('cuda')
+        logging.info(vox_grid.voxel_shape)
+        logging.info(vox_grid.center2corner.shape)
+        logging.info(vox_grid.corner_points.shape)
+        logging.info((vox_grid.center_points[0][None,:] - vox_grid.get_corner_points(0))/0.2)
+        logging.info(vox_grid.get_corner_points(torch.arange(3)).shape)
 
+    @unittest.SkipTest
     def test_ray_intersect(self):
         from accelRF.raysampler.utils import get_rays
         import accelRF._C.rep._ext as rep_ext
@@ -78,7 +87,6 @@ class TestVoxelGrid(unittest.TestCase):
         inds_m, min_depth_m, max_depth_m, hits = vox_grid.ray_intersect(rays_o_, rays_d_)
         self.assertEqual(inds_x.sum() - inds_m.sum(), 0)
         print(inds_m.shape, hits.shape)
-
 
 if __name__ == '__main__':
     unittest.main(exit=False)

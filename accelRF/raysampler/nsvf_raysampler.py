@@ -19,7 +19,7 @@ def masked_sample(mask: Tensor, n_samples: int) -> Tensor:
     logp = torch.log(probs + TINY)
     rand_gumbel = -torch.log(-torch.log(torch.rand_like(probs) + TINY) + TINY)
     sampled_idx = (logp + rand_gumbel).topk(n_samples, dim=-1)[1]
-    sampled_mask = torch.zeros_like(mask, dtype=torch.bool).scatter_(-1, sampled_idx, True)
+    sampled_mask = torch.zeros_like(mask, dtype=torch.bool).scatter_(-1, sampled_idx, 1)
     return sampled_mask
 
 
@@ -61,7 +61,7 @@ class VoxIntersectRaySampler(BaseRaySampler):
         out = {
             'rays_o': rays_o, 'rays_d': rays_d, 
             'vox_idx': vox_idx, 't_near': t_near, 't_far': t_far,
-            'hits': hits}
+            'hits': hits} # keep pay attention to hits!!!
         if gt_rgb is not None:
             out['gt_rgb'] = gt_rgb
 

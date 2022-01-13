@@ -9,9 +9,10 @@ import torch
 from torch.utils.data import DataLoader
 
 from accelRF.datasets import Blender
-from accelRF.raysampler import NeRFRaySampler, PerViewRaySampler
+from accelRF.raysampler import NeRFRaySampler, PerViewRaySampler, VoxIntersectRaySampler
+from accelRF.rep.voxel_grid import VoxelGrid
 
-
+@unittest.SkipTest
 class TestNeRFRaySampler(unittest.TestCase):
     def __init__(self, methodName: str = ...) -> None:
         super().__init__(methodName=methodName)
@@ -87,6 +88,22 @@ class TestNeRFRaySampler(unittest.TestCase):
         self.assertEqual(out['rays_o'].shape, self.batch_shape)
         self.assertEqual(out['rays_d'].shape, self.batch_shape)
         self.assertEqual(out['gt_rgb'].shape, self.batch_shape)
+
+class TestNSVFRaySampler(unittest.TestCase):
+    def __init__(self, methodName: str = ...) -> None:
+        super().__init__(methodName=methodName)
+        self.dataset = Blender('/data/stu01/ruofan/nerf-experiment/data/nerf_synthetic/', 
+                        'lego', with_bbox=True)
+        self.batch_shape = torch.Size([2048,3])
+        voxelsize = 0.4
+        self.baseraysampler = PerViewRaySampler(self.dataset, length=40, precrop=False, N_views=2)
+        self.vox_grid = VoxelGrid(self.dataset.bbox, voxelsize).to('cuda')
+
+    def test_voxel_intersect_ray_sampler(self):
+        raysampler = VoxIntersectRaySampler(512, self.baseraysampler, self.vox_grid)
+        ray_batch = raysampler[0]
+        self.assertEqual(ray_batch['rays_o'].shape, torch.Size([512, 3]))
+        logging.info(ray_batch['vox_idx'].shape)
 
 if __name__ == '__main__':
     unittest.main(exit=False)

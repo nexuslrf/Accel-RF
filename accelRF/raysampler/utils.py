@@ -4,7 +4,7 @@ import torch
 
 # Ray helpers
 @torch.jit.script
-def get_rays(H: int, W: int, focal: float, c2w: torch.Tensor):
+def get_rays(H: int, W: int, focal: float, c2w: torch.Tensor, normalize_dir: bool=False):
     device = c2w.device
     i, j = torch.meshgrid(
         torch.linspace(0, W-1, W, device=device), 
@@ -16,6 +16,8 @@ def get_rays(H: int, W: int, focal: float, c2w: torch.Tensor):
     rays_d = torch.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
     # Translate camera frame's origin to the world frame. It is the origin of all rays.
     rays_o = c2w[:3,-1].expand(rays_d.shape)
+    if normalize_dir:
+        rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
     return rays_o, rays_d
 
 def get_rays_np(H, W, focal, c2w):
@@ -57,6 +59,6 @@ def aabb_intersect(ray_o: torch.Tensor, ray_d: torch.Tensor, center_pts: torch.T
     tmax = torch.where(tbot > ttop, tbot, ttop)
     largest_tmin, _ = tmin.max(dim=1)
     smallest_tmax, _ = tmax.min(dim=1)
-    tnear = largest_tmin.clamp_min(near)
-    tfar = smallest_tmax.clamp_max(far)
-    return tnear, tfar
+    t_near = largest_tmin.clamp_min(near)
+    t_far = smallest_tmax.clamp_max(far)
+    return t_near, t_far

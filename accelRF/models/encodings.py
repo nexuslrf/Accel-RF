@@ -5,7 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch import Tensor
-
+from ..rep import Explicit3D
+from ..rep.utils import trilinear_interp
 
 class PositionalEncoding(nn.Module):
     def __init__(self, include_input=True, N_freqs=4, log_sampling=True, 
@@ -39,3 +40,40 @@ class PositionalEncoding(nn.Module):
 
         embed = embed.flatten(-2) # [..., in_ch * ( 2*N_freqs?(+1) )]
         return embed
+
+class VoxelEncoding(nn.Module):
+    def __init__(self, vox_rep: Explicit3D, embed_dim: int):
+        super().__init__()
+        self.vox_rep = vox_rep
+        self.embed_dim = embed_dim
+        num_feat_pts = self.vox_rep.n_corners
+        self.voxel_embeddings = nn.Embedding(num_feat_pts, embed_dim)
+        nn.init.normal_(self.voxel_embeddings.weight, mean=0, std=embed_dim ** -0.5)
+        interp_offset = torch.stack(torch.meshgrid([torch.tensor([0.,1.])]*3),-1).reshape(-1,3)
+        self.register_buffer('interp_offset', interp_offset)
+
+    def forward(self, pts: Tensor, p2v_idx: Tensor):
+        '''
+        Args:
+            p2v_idx: Tensor, [N_pts] 
+                mapping pts to voxel idx, Note voxel idx are 1D index, and -1 idx should be masked out.
+
+        '''
+        # get corresponding voxel embeddings
+        vox_idx = p2v_idx.long()
+        center_pts = self.vox_rep.center_points[vox_idx] # (N, 3)
+        corner_idx = self.vox_rep.center2corner[vox_idx] # (N, 8)
+        corner_pts = self.vox_rep.corner_points[corner_idx] # (N, 8, 3)
+        embeds = self.voxel_embeddings(corner_idx) # (N, 8, embed_dim)
+        
+        # interpolation
+        interp_embeds = trilinear_interp(pts, center_pts, embeds, 
+            self.vox_rep.voxel_size, self.interp_offset)
+        
+        return interp_embeds
+
+    def pruning(self):
+        NotImplemented
+    
+    def splitting(self):
+        NotImplemented

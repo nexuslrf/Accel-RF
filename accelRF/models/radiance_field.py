@@ -86,7 +86,7 @@ class RaidanceField(Field):
         if getattr(args, "zero_z_steps", 0) > 0:
             self.register_buffer("zero_z", torch.scalar_tensor(1))  # it will be saved to checkpoint
         else:
-            self.zero_z = 0 # what does it mean?
+            self.zero_z = 0 # enable this for zero-out latent feature
 
     def set_num_updates(self, updates):
         self.updates = updates
@@ -106,10 +106,6 @@ class RaidanceField(Field):
                 spec_init=True if not self.nerf_style else False)  
         else:
             assert (not self.nerf_style), "Hypernetwork does not support NeRF style MLPs yet."
-            den_contxt_dim = self.den_input_dims[-1]
-            self.feature_field = HyperImplicitField(
-                den_contxt_dim, den_input_dim - den_contxt_dim, 
-                den_feat_dim, args.feature_embed_dim, args.feature_layers + 2)  # +2 is to adapt to old code
         
     def build_density_predictor(self, args):
         den_feat_dim = self.tex_input_dims[0]

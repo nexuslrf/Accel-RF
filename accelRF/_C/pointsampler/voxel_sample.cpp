@@ -11,7 +11,7 @@ void voxel_uniform_sample_kernel_wrapper(
 void voxel_cdf_sample_kernel_wrapper(
   int b, int rays_per_blk, int n_rays, int max_hits, int max_steps, float fixed_step_size,
   const int *pts_idx, const float *min_depth, const float *max_depth,
-  const float *uniform_noise, const float *probs, const float *steps,
+  const float *uniform_noise, const float *probs, const int *steps,
   int *sampled_idx, float *sampled_depth, float *sampled_dists);
 
                   
@@ -64,7 +64,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> voxel_cdf_sample(
   CHECK_IS_FLOAT(max_depth);
   CHECK_IS_FLOAT(uniform_noise);
   CHECK_IS_FLOAT(probs);
-  CHECK_IS_FLOAT(steps);
+  CHECK_IS_INT(steps);
   CHECK_IS_INT(pts_idx);
   CHECK_CUDA(pts_idx);
   CHECK_CUDA(min_depth);
@@ -85,7 +85,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> voxel_cdf_sample(
       torch::zeros({n_rays, max_steps}, at::device(min_depth.device()).dtype(at::ScalarType::Float));
   voxel_cdf_sample_kernel_wrapper(n_blocks, rays_per_blk, n_rays, max_hits, max_steps, fixed_step_size,
                                       pts_idx.data_ptr <int>(), min_depth.data_ptr <float>(), max_depth.data_ptr <float>(),
-                                      uniform_noise.data_ptr <float>(), probs.data_ptr <float>(), steps.data_ptr <float>(),
+                                      uniform_noise.data_ptr <float>(), probs.data_ptr <float>(), steps.data_ptr <int>(),
                                       sampled_idx.data_ptr <int>(), sampled_depth.data_ptr <float>(), sampled_dists.data_ptr <float>());
   return std::make_tuple(sampled_idx, sampled_depth, sampled_dists);
 }

@@ -1,15 +1,8 @@
-// Copyright (c) Facebook, Inc. and its affiliates.
-// 
-// This source code is licensed under the MIT license found in the
-// LICENSE file in the root directory of this source tree.
-
-
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "cuda_utils.h"
-#include "cutil_math.h"  // required for float3 vector math
+#include "utils.h"
 
 
 __global__ void voxel_uniform_sample_kernel(
@@ -114,7 +107,7 @@ __global__ void voxel_cdf_sample_kernel(
     const float *__restrict__ max_depth,
     const float *__restrict__ uniform_noise,
     const float *__restrict__ probs,
-    const float *__restrict__ steps,
+    const int *__restrict__ steps,
     int *__restrict__ sampled_idx,
     float *__restrict__ sampled_depth,
     float *__restrict__ sampled_dists) {
@@ -133,9 +126,9 @@ __global__ void voxel_cdf_sample_kernel(
         float curr_max_depth = max_depth[H];  // upper depth
         float curr_min_cdf = 0;
         float curr_max_cdf = probs[H];
-        float step_size = 1.0 / steps[j];
+        float step_size = 1.0 / steps[j]; // uniform step size from 0 to 1.
         float z_low = curr_min_depth;        
-        int total_steps = int(ceil(steps[j]));
+        int total_steps = steps[j];
         bool done = false;
 
         // optional use a fixed step size
@@ -148,7 +141,7 @@ __global__ void voxel_cdf_sample_kernel(
                 // first include max cdf
                 sampled_idx[K + s] = pts_idx[H + curr_bin];
                 sampled_dists[K + s] = (curr_max_depth - z_low);
-                sampled_depth[K + s] = (curr_max_depth + z_low) * .5;
+                sampled_depth[K + s] = (curr_max_depth + z_low) * .5; // to avoid sample on the voxel boundary points.
 
                 // move to next cdf
                 curr_bin++; 
@@ -206,7 +199,7 @@ void voxel_uniform_sample_kernel_wrapper(
 void voxel_cdf_sample_kernel_wrapper(
     int b, int rays_per_blk, int n_rays, int max_hits, int max_steps, float fixed_step_size,
     const int *pts_idx, const float *min_depth, const float *max_depth,
-    const float *uniform_noise, const float *probs, const float *steps,
+    const float *uniform_noise, const float *probs, const int *steps,
     int *sampled_idx, float *sampled_depth, float *sampled_dists) {
     
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();

@@ -60,7 +60,7 @@ std::tuple< at::Tensor, at::Tensor, at::Tensor > aabb_intersect(at::Tensor rays_
     max_depth, min_depth.
     
   Note: this function has wiser implementations, if points is a regular dense grid (4D Tensor).
-  TODO@nexuslrf: decide whether to further improve it or not based on later use cases.
+   TODO@nexuslrf: decide whether to further improve it or not based on later use cases.
   */
 
   // assert(points.dim()==4 && "Points should be a 4-D tensor.");
@@ -73,19 +73,13 @@ std::tuple< at::Tensor, at::Tensor, at::Tensor > aabb_intersect(at::Tensor rays_
   int rays_per_blk = (n_rays - 1) / n_blocks + 1;
   float half_voxel = voxelsize * 0.5; 
   at::Tensor idx =
-      torch::zeros({n_blocks, rays_per_blk, max_hit},
-                    at::device(rays_o.device()).dtype(at::ScalarType::Int));
+      torch::zeros({n_rays, max_hit}, at::device(rays_o.device()).dtype(at::ScalarType::Int));
   at::Tensor min_depth =
-      torch::zeros({n_blocks, rays_per_blk, max_hit},
-                    at::device(rays_o.device()).dtype(at::ScalarType::Float));
+      torch::zeros({n_rays, max_hit}, at::device(rays_o.device()).dtype(at::ScalarType::Float));
   at::Tensor max_depth =
-      torch::zeros({n_blocks, rays_per_blk, max_hit},
-                    at::device(rays_o.device()).dtype(at::ScalarType::Float));
+      torch::zeros({n_rays, max_hit}, at::device(rays_o.device()).dtype(at::ScalarType::Float));
   aabb_intersect_kernel_wrapper(n_blocks, rays_per_blk, n_pts, n_rays, max_hit, half_voxel,
                                   rays_o.data_ptr <float>(), rays_d.data_ptr <float>(), points.data_ptr <float>(),
                                   idx.data_ptr <int>(), min_depth.data_ptr <float>(), max_depth.data_ptr <float>());
-  idx = idx.reshape({n_blocks*rays_per_blk, max_hit}).slice(0,0,n_rays);
-  min_depth = min_depth.reshape({n_blocks*rays_per_blk, max_hit}).slice(0,0,n_rays);
-  max_depth = max_depth.reshape({n_blocks*rays_per_blk, max_hit}).slice(0,0,n_rays);
   return std::make_tuple(idx, min_depth, max_depth);
 }

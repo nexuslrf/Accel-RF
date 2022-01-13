@@ -61,19 +61,19 @@ class VoxelGrid(Explicit3D):
             rays_d, Tensor, (N_rays, 3)
         Return:
             pts_idx, Tensor, (N_rays, )
-            t_min?
-            t_max?
+            t_near?
+            t_far?
         '''
         max_hit = self.side_len.sum().item()
-        pts_idx_1d, t_min, t_max = _ext.aabb_intersect(
+        pts_idx_1d, t_near, t_far = _ext.aabb_intersect(
             rays_o.contiguous(), rays_d.contiguous(), 
             self.center_points.contiguous(), self.voxel_size, max_hit)
-        t_min.masked_fill_(pts_idx_1d.eq(-1), MAX_DEPTH)
-        t_min, sort_idx = t_min.sort(dim=-1)
-        t_max = t_max.gather(-1, sort_idx)
+        t_near.masked_fill_(pts_idx_1d.eq(-1), MAX_DEPTH)
+        t_near, sort_idx = t_near.sort(dim=-1)
+        t_far = t_far.gather(-1, sort_idx)
         pts_idx_1d = pts_idx_1d.gather(-1, sort_idx)
         hits = pts_idx_1d.ne(-1).any(-1)
-        return pts_idx_1d, t_min, t_max, hits
+        return pts_idx_1d, t_near, t_far, hits
 
 
 

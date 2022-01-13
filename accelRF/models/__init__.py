@@ -1,4 +1,2 @@
-from .modules import *
+from .encodings import *
 from .nerf import *
-from .radiance_field import *
-from .implicit import *

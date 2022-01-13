@@ -7,13 +7,13 @@ from collections import OrderedDict
 import torch
 import torch.nn as nn
 
-import accelRF.models.modules as modules
+import accelRF.models.encodings as encodings
 from accelRF.models.nerf import NeRF
 
 @unittest.SkipTest
 class TestModules(unittest.TestCase):
     def test_positional_encoding(self):
-        pe = modules.PositionalEncoding(N_freqs=4)
+        pe = encodings.PositionalEncoding(N_freqs=4)
         pe = torch.jit.script(pe)
         pe = nn.DataParallel(pe).to('cuda')
         pe = pe.to('cuda')

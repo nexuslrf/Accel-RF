@@ -59,3 +59,22 @@ def voxel_cdf_sample(
     pts = rays_o[...,None,:] + sampled_tvals[...,None] * rays_d[...,None,:] # [N_rays, max_hits, 3]
     # Note: sampled_dist are not used.
     return pts, sampled_vidx, sampled_tvals
+
+# wrap the sample functions into a `nn.Module` for better extensibility
+class NSVFPointSampler(nn.Module):
+    def __init__(self, step_size: float, fixed_samples: int=0, 
+        with_base_hits: bool=True, det: bool=False):
+        super().__init__()
+        self.step_size = step_size
+        self.fixed_samples = fixed_samples
+        self.with_base_hits = with_base_hits
+        self.det = det 
+    
+    def half_stepsize(self):
+        self.step_size *= 0.5
+    
+    @torch.no_grad()
+    def forward(self, rays_o: Tensor, rays_d: Tensor, vox_idx: Tensor, t_near: Tensor, t_far: Tensor):
+        det = self.det and (not self.training)
+        return voxel_cdf_sample(rays_o, rays_d, vox_idx, t_near, t_far, 
+                    self.step_size, self.fixed_samples, self.with_base_hits, det)

@@ -127,6 +127,8 @@ class TestNSVFPointSampler(unittest.TestCase):
 
         pts, p2v_idx, t_vals = aps.voxel_cdf_sample(
             rays_o, rays_d, vox_idx, t_near, t_far, 0.125)
+        nsvf_pts_sampler = aps.NSVFPointSampler(0.125)
+        pts, p2v_idx, t_vals = nsvf_pts_sampler(rays_o, rays_d, vox_idx, t_near, t_far)
         logging.info(pts.shape)
         logging.info(t_vals.shape)
         logging.info(vox_idx.dtype)

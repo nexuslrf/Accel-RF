@@ -48,7 +48,9 @@ class VoxIntersectRaySampler(BaseRaySampler):
         ray_batch = next(self.raysampler_itr)
         rays_o, rays_d = [ray_batch[k][0].to(self.device) for k in ('rays_o', 'rays_d')] # [N_rays, 3]
         gt_rgb = ray_batch['gt_rgb'][0].to(self.device) if 'gt_rgb' in ray_batch else None
-
+        # note: nsvf's sampling require normalized rays_d
+        rays_d = rays_d / rays_d.norm(dim=-1, keepdim=True)
+        
         vox_idx, t_near, t_far, hits = self.vox_rep.ray_intersect(rays_o, rays_d)
         if self.mask_sample:
             sampled_mask = masked_sample(hits, self.N_rand)

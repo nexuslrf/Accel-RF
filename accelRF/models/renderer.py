@@ -97,13 +97,13 @@ class VolumeRenderer(Renderer):
         # post processing
         if 'sigma' in field_outputs:
             sigma, sampled_dists= field_outputs['sigma'], field_inputs['dists']
-            # use noise 
+            # (optional) use noise 
             # noise = 0 if not self.discrete_reg and (not self.training) else torch.zeros_like(sigma).normal_()  
             # free_energy = torch.relu(noise + sigma) * sampled_dists   
             # free_energy = free_energy * 7.0 
             # (optional) free_energy = (F.elu(sigma - 3, alpha=1) + 1) * dists
             # direct free_energy
-            free_energy = torch.abs(sigma) * sampled_dists  
+            free_energy = torch.relu(sigma) * sampled_dists  
             outputs['free_energy'] = masked_scatter(sample_mask, free_energy)
         if 'sdf' in field_outputs:
             outputs['sdf'] = masked_scatter(sample_mask, field_outputs['sdf'])
@@ -116,8 +116,8 @@ class VolumeRenderer(Renderer):
         return outputs, sample_mask.sum()
 
     def forward_chunk(
-        self, input_fn, field_fn, ray_start, ray_dir, samples, encoder_states,
-        gt_depths=None, output_types=['sigma', 'texture'], global_weights=None,
+        self, input_fn, field_fn, ray_start, ray_dir, samples, encoder_states, 
+            output_types=['sigma', 'texture'], global_weights=None,
         ):
         if self.trace_normal:
             output_types += ['normal']

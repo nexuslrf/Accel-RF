@@ -92,30 +92,15 @@ class SignedDistanceField(ImplicitField):
     """
     Predictor for density or SDF values.
     """
-    def __init__(self, in_dim, hidden_dim, num_layers=1, 
-                recurrent=False, with_ln=True, spec_init=True):
-        super().__init__(in_dim, in_dim, in_dim, num_layers-1, with_ln=with_ln, spec_init=spec_init) # 0 layer? class relationship like a shit.
-        self.recurrent = recurrent
-        if recurrent:
-            assert num_layers > 1
-            self.hidden_layer = nn.LSTMCell(input_size=in_dim, hidden_size=hidden_dim) # wtf?
-            self.hidden_layer.apply(init_recurrent_weights)
-            lstm_forget_gate_init(self.hidden_layer)
-        else:
-            self.hidden_layer = FCLayer(in_dim, hidden_dim, with_ln) \
+    def __init__(self, in_dim, hidden_dim, num_layers=1, with_ln=True, spec_init=True):
+        super().__init__(in_dim, in_dim, in_dim, num_layers-1, with_ln=with_ln, spec_init=spec_init)
+        self.hidden_layer = FCLayer(in_dim, hidden_dim, with_ln) \
                 if num_layers > 0 else nn.Identity()
         prev_dim = hidden_dim if num_layers > 0 else in_dim
         self.output_layer = nn.Linear(prev_dim, 1)
 
     def forward(self, x, state=None):
-        if self.recurrent:
-            shape = x.size()
-            state = self.hidden_layer(x.view(-1, shape[-1]), state)
-            if state[0].requires_grad:
-                state[0].register_hook(lambda x: x.clamp(min=-5, max=5))
-            return self.output_layer(state[0].view(*shape[:-1], -1)).squeeze(-1), state
-        else:
-            return self.output_layer(self.hidden_layer(x)).squeeze(-1), None
+        return self.output_layer(self.hidden_layer(x)).squeeze(-1), None
 
 
 class TextureField(ImplicitField): # this is completely unnecessary wrapper!

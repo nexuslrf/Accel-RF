@@ -8,8 +8,9 @@ import torch
 import torch.nn as nn
 # torch._C._jit_set_profiling_executor(False)
 import accelRF.pointsampler as aps
+from accelRF.rep.voxel_grid import VoxelGrid
 
-
+@unittest.SkipTest
 class TestNeRFPointSampler(unittest.TestCase):
     def __init__(self, methodName: str = ...) -> None:
         super().__init__(methodName=methodName)
@@ -98,6 +99,37 @@ class TestNeRFPointSampler(unittest.TestCase):
         ret = sampler(self.rays_o.to(device), self.rays_d.to(device), z_vals, weights)
         pts_fine, _ = ret
         self.assertEqual(pts_fine.shape, torch.Size([self.N_rays, self.N_samples+self.N_importance, 3]))
+    
+class TestNSVFPointSampler(unittest.TestCase):
+    def __init__(self, methodName: str = ...) -> None:
+        super().__init__(methodName=methodName)
+        bbox = torch.tensor([-0.67, -1.2, -0.37, 0.67, 1.2, 1.03])
+        voxelsize = 0.4
+        self.vox_grid = VoxelGrid(bbox, voxelsize).to('cuda')
+
+    def test_voxel_cdf_sample(self):
+        from accelRF.raysampler.utils import get_rays
+        pose = torch.tensor([
+            [-9.9990e-01,  4.1922e-03, -1.3346e-02, -5.3798e-02],
+            [-1.3989e-02, -2.9966e-01,  9.5394e-01,  3.8455e+00],
+            [-4.6566e-10,  9.5404e-01,  2.9969e-01,  1.2081e+00],
+            [ 0.0000e+00,  0.0000e+00,  0.0000e+00,  1.0000e+00]])
+        H, W = 800, 800
+        f = 1111.1110311937682
+        rays_o, rays_d = get_rays(H, W, f, pose, normalize_dir=True) # 800,800,3
+        rays_o = rays_o.reshape(-1, 3).contiguous().cuda()
+        rays_d = rays_d.reshape(-1, 3).contiguous().cuda()
+        vox_idx, t_near, t_far, hits = self.vox_grid.ray_intersect(rays_o, rays_d)
+        N_sample = 1024
+        vox_idx = vox_idx[:N_sample]
+        t_near, t_far = t_near[:N_sample], t_far[:N_sample]
+        rays_o, rays_d = rays_o[:N_sample], rays_d[:N_sample]
+
+        pts, p2v_idx, t_vals = aps.voxel_cdf_sample(
+            rays_o, rays_d, vox_idx, t_near, t_far, 0.125)
+        logging.info(pts.shape)
+        logging.info(t_vals.shape)
+        logging.info(vox_idx.dtype)
 
 if __name__ == '__main__':
     unittest.main(exit=False)

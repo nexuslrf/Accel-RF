@@ -9,16 +9,19 @@ from accelRF.raysampler.utils import ndc_rays
 # volumetric rendering should be differentialable.
 @torch.jit.script
 def volumetric_rendering(
-    rgb: Optional[Tensor], sigma: Tensor, z_vals: Tensor, dir_lens: Optional[Tensor], 
-    white_bkgd: bool=False) -> Dict[str, Tensor]:
+    rgb: Optional[Tensor], sigma: Tensor, 
+    z_vals: Tensor, dir_lens: Optional[Tensor]=None, 
+    white_bkgd: bool=False, with_dist: bool=False) -> Dict[str, Tensor]:
     """Volumetric Rendering Function.
 
     Args:
         rgb: Tensor, color, [N_rays, N_samples, 3]
         sigma: Tensor, density, [N_rays, N_samples, 1].
-        z_vals: Tensor, [N_rays, N_samples].
+        z_vals: Tensor, [N_rays, N_samples]. Used for calculating dist
+            if is None, input sigma should already multiplied with dist.
         dir_lens: [N_rays, 1]
         white_bkgd: bool.
+            if True, sigma is actually sigma * dist. 
         dirs: Tensor, [N_rays, 3]. Note: *no expand* Update: **removed**
 
     Returns:
@@ -30,23 +33,28 @@ def volumetric_rendering(
         )
     """
     eps = 1e-10
-    dists = torch.cat([
-        z_vals[..., 1:] - z_vals[..., :-1],
-        1e10 * torch.ones_like(z_vals[..., :1])
-    ], -1) # [N_rays, N_samples]
+    if not with_dist:
+        dists = torch.cat([
+            z_vals[..., 1:] - z_vals[..., :-1],
+            1e10 * torch.ones_like(z_vals[..., :1])
+        ], -1) # [N_rays, N_samples]
 
-    # Multiply each distance by the norm of its corresponding direction ray
-    # to convert to real world distance (accounts for non-unit directions).
+        # Multiply each distance by the norm of its corresponding direction ray
+        # to convert to real world distance (accounts for non-unit directions).
 
-    # dists = dists * torch.norm(dirs[..., None, :], dim=-1)
-    if dir_lens is not None:
-        dists = dists * dir_lens
-    
+        # dists = dists * torch.norm(dirs[..., None, :], dim=-1)
+        if dir_lens is not None:
+            dists = dists * dir_lens
+        # Note that we're quietly turning sigma from [..., 0] to [...].
+        free_energy = sigma[..., 0] * dists
+
+    else:
+        free_energy = sigma[..., 0]
+        
     # random noise is omitted.
     # noise = torch.randn_like(sigma) * noise_std
-
-    # Note that we're quietly turning sigma from [..., 0] to [...].
-    alpha = 1.0 - torch.exp(-sigma[..., 0] * dists)
+    
+    alpha = 1.0 - torch.exp(-free_energy)
     accum_prod = torch.cat([
         torch.ones_like(alpha[..., :1]),
         torch.cumprod(1.0 - alpha[..., :-1] + eps, -1)

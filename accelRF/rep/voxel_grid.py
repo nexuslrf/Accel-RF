@@ -85,3 +85,7 @@ class VoxelGrid(Explicit3D):
     def get_corner_points(self, center_idx):
         corner_idx = self.center2corner[center_idx] # [..., 8]
         return self.corner_points[corner_idx] # [..., 8, 3]
+
+    def get_edge(self):
+        NotImplemented
+        # TODO

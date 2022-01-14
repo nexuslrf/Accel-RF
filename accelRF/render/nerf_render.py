@@ -9,7 +9,7 @@ from accelRF.raysampler.utils import ndc_rays
 # volumetric rendering should be differentialable.
 @torch.jit.script
 def volumetric_rendering(
-    rgb: Optional[Tensor], sigma: Tensor, z_vals: Tensor, dir_lens: Tensor, 
+    rgb: Optional[Tensor], sigma: Tensor, z_vals: Tensor, dir_lens: Optional[Tensor], 
     white_bkgd: bool=False) -> Dict[str, Tensor]:
     """Volumetric Rendering Function.
 
@@ -39,7 +39,8 @@ def volumetric_rendering(
     # to convert to real world distance (accounts for non-unit directions).
 
     # dists = dists * torch.norm(dirs[..., None, :], dim=-1)
-    dists = dists * dir_lens
+    if dir_lens is not None:
+        dists = dists * dir_lens
     
     # random noise is omitted.
     # noise = torch.randn_like(sigma) * noise_std
@@ -72,7 +73,6 @@ class NeRFRender(nn.Module):
     Wrap up core components in one nn.Module to show a clear workflow and 
     can better utilize multi-GPU training.
     TODO starts with `NeRFRender` class, if this function generalize well, then do a higher level abstraction.
-    TODO think about evaluation mode later..
     '''
     def __init__(
         self,
@@ -96,7 +96,6 @@ class NeRFRender(nn.Module):
             self.fine_model = fine_model
             self.hierachical = True
         self.point_sampler = point_sampler
-        self.use_viewdirs = model
         self.white_bkgd = white_bkgd
         self.fast_eval = fast_eval
         self.chunk = chunk

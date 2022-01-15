@@ -58,7 +58,7 @@ def voxel_cdf_sample(
     
     pts = rays_o[...,None,:] + sampled_tvals[...,None] * rays_d[...,None,:] # [N_rays, max_hits, 3]
     # Note: sampled_dist are not used.
-    return pts, sampled_vidx, sampled_tvals
+    return pts, sampled_vidx, sampled_tvals, sampled_dists
 
 # wrap the sample functions into a `nn.Module` for better extensibility
 class NSVFPointSampler(nn.Module):

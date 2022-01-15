@@ -10,6 +10,7 @@ class NeRF(nn.Module):
         skips: List[int]=[4]
         ) -> None:
         """
+        NeRF's core MLP model, just the definition of MLP.
         Args:
             D: number of layers for density (sigma) encoder
             W: number of hidden units in each layer

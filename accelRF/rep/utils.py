@@ -26,7 +26,9 @@ def trilinear_interp(sample_pts: Tensor, center_pts: Tensor, corner_feats: Tenso
         offset: [8, 3]
     '''
     if offset is None:
-        offset = offset_points(device=sample_pts.device)
+        offset = torch.stack(
+                torch.meshgrid([torch.tensor([0.,1.], device=sample_pts.device)]*3),-1
+            ).reshape(-1,3)
     p = ((sample_pts - center_pts) / voxel_size + 0.5)[...,None,:] # +0.5 to rescale to [0,1], [N, 1, 3]
     r = (2*p*offset - p - offset + 1).prod(dim=-1, keepdim=True) # <=> (p*offset + (1-p)*(1-offset)); [N, 8, 1]
     interp_feat = (corner_feats * r).sum(1) # [N, embed_dim]
@@ -40,7 +42,7 @@ def offset_points(bits: int=2, n_dim: int=3,
         scale: -1 or 0. -1 -> [-1,1]; 0 -> [0, 1]
     '''
     c = torch.arange(bits, device=device)
-    offset = torch.cat(torch.meshgrid([c]*n_dim), -1).reshape(-1, n_dim) / (bits - 1.)
+    offset = torch.stack(torch.meshgrid([c]*n_dim), -1).reshape(-1, n_dim) / (bits - 1.)
     if scale == -1:
         offset = 2 * offset - 1
     return offset

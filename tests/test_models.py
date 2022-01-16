@@ -104,7 +104,7 @@ class TestVoxEncoding(unittest.TestCase):
             rays_o, rays_d, vox_idx, t_near, t_far, 0.125)
         pts_mask = p2v_idx.ne(-1)
 
-        VoxEncoding = encodings.VoxelEncoding(self.vox_grid, 16).cuda()
+        VoxEncoding = encodings.VoxelEncoding(self.vox_grid.n_corners, 16).cuda()
 
         pts_in, p2v_idx_in = pts[pts_mask], p2v_idx[pts_mask]
         logging.info(f'{pts_in.shape} {p2v_idx_in.shape}')

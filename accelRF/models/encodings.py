@@ -9,18 +9,21 @@ from ..rep import Explicit3D
 from ..rep.utils import trilinear_interp
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, include_input=True, N_freqs=4, log_sampling=True, 
-        angular_enc=False, freq_last=False):
+    def __init__(self, N_freqs=4, include_input=True, log_sampling=True, 
+        angular_enc=False, pi_bands=False, freq_last=False):
         super().__init__()
         self.include_input = include_input # input at first 
         self.angular_enc = angular_enc
+        self.pi_bands = pi_bands
         self.freq_last = freq_last
 
         if log_sampling:
             freq_bands = 2.**torch.linspace(0., (N_freqs-1), steps=N_freqs)
         else:
             freq_bands = torch.linspace(2.**0., 2.**(N_freqs-1), steps=N_freqs)
-        
+
+        if pi_bands:
+            freq_bands = freq_bands * np.pi
         self.half_pi = np.pi / 2
         self.register_buffer('freq_bands', freq_bands, False) # no need to checkpoint
 
@@ -42,38 +45,42 @@ class PositionalEncoding(nn.Module):
         return embed
 
 class VoxelEncoding(nn.Module):
-    def __init__(self, vox_rep: Explicit3D, embed_dim: int):
+    def __init__(self, n_embeds: int, embed_dim: int):
         super().__init__()
-        self.vox_rep = vox_rep
         self.embed_dim = embed_dim
-        num_feat_pts = self.vox_rep.n_corners
-        self.voxel_embeddings = nn.Embedding(num_feat_pts, embed_dim)
+        self.n_embeds = n_embeds
+        self.voxel_embeddings = nn.Embedding(self.n_embeds, embed_dim)
         nn.init.normal_(self.voxel_embeddings.weight, mean=0, std=embed_dim ** -0.5)
         interp_offset = torch.stack(torch.meshgrid([torch.tensor([0.,1.])]*3),-1).reshape(-1,3)
         self.register_buffer('interp_offset', interp_offset)
 
-    def forward(self, pts: Tensor, p2v_idx: Tensor):
+    def forward(self, pts: Tensor, p2v_idx: Tensor, vox_rep: Explicit3D, per_voxel: bool=False):
         '''
-        Args:
-            p2v_idx: Tensor, [N_pts] 
-                mapping pts to voxel idx, Note voxel idx are 1D index, and -1 idx should be masked out.
-
+        if per_voxel is False
+            Args:
+                pts: Tensor, [N_pts, 3]
+                p2v_idx: Tensor, [N_pts] 
+                    mapping pts to voxel idx, Note voxel idx are 1D index, and -1 idx should be masked out.
+        if per_voxel is True
+            Args:
+                pts: Tensor, relative points in one voxel, [N_pts_per_vox, 3], scale [0,1]
+                p2v_idx: Tensor, [N_vox]
+            Return:
+                embeds, [N_vox, N_pts_per_vox, embed_dim]
         '''
         # get corresponding voxel embeddings
-        vox_idx = p2v_idx.long()
-        center_pts = self.vox_rep.center_points[vox_idx] # (N, 3)
-        corner_idx = self.vox_rep.center2corner[vox_idx] # (N, 8)
-        corner_pts = self.vox_rep.corner_points[corner_idx] # (N, 8, 3)
+        p2v_idx = p2v_idx.long()
+        center_pts = vox_rep.center_points[p2v_idx] # (N, 3)
+        corner_idx = vox_rep.center2corner[p2v_idx] # (N, 8)
         embeds = self.voxel_embeddings(corner_idx) # (N, 8, embed_dim)
         
         # interpolation
-        interp_embeds = trilinear_interp(pts, center_pts, embeds, 
-            self.vox_rep.voxel_size, self.interp_offset)
-        
+        if not per_voxel:
+            interp_embeds = trilinear_interp(pts, center_pts, embeds, 
+                vox_rep.voxel_size, self.interp_offset)
+        else:
+            pts = pts[...,None,:] # [N_pts_per_vox, 1, 3]
+            r = (pts*self.interp_offset + (1-pts)*(1-self.interp_offset))\
+                    .prod(dim=-1, keepdim=True)[None,:] # [1, N_ppv, 8, 1]
+            interp_embeds = (embeds[:,None,:] * r).sum(-2) # [N_v, N_ppv, embed_dim]
         return interp_embeds
-
-    def pruning(self):
-        NotImplemented
-    
-    def splitting(self):
-        NotImplemented

@@ -87,3 +87,6 @@ class VoxelEncoding(nn.Module):
     def update_embeddings(self, new_embeddings):
         self.embeddings.weight = nn.Parameter(new_embeddings)
         self.embeddings.num_embeddings = new_embeddings.shape[0]
+    
+    def get_weight(self):
+        return self.embeddings.weight

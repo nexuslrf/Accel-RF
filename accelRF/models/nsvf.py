@@ -95,7 +95,7 @@ class NSVF_MLP(nn.Module):
         feat = self.feat_layers(pts)
         sigma = self.sigma_layers(feat)
         ret = {'sigma': sigma}
-        if self.with_n2_term:
+        if self.with_n2_term and self.training:
             ret['feat_n2'] = (feat ** 2).sum(-1)
         if dir is None:
             return ret
@@ -135,6 +135,6 @@ class BackgroundField(nn.Module):
         self.bg_color = nn.Parameter(bg_color, requires_grad=trainable)
         self.depth = background_depth
 
-    def forward(self, x, **kwargs):
+    def forward(self, x):
         return self.bg_color.unsqueeze(0).expand(
             *x.size()[:-1], self.out_dim)

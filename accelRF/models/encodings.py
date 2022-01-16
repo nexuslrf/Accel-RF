@@ -27,7 +27,7 @@ class PositionalEncoding(nn.Module):
         self.half_pi = np.pi / 2
         self.register_buffer('freq_bands', freq_bands, False) # no need to checkpoint
 
-    @torch.no_grad()
+    # @torch.no_grad()
     def forward(self, x: Tensor):
         if self.angular_enc: 
             x = torch.acos(x.clamp(-1 + 1e-6, 1 - 1e-6)) # used in NSVF..

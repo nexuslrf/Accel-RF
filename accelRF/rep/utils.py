@@ -4,7 +4,7 @@ import torch
 from torch import Tensor
 
 @torch.jit.script
-def bbox2voxels(bbox: Tensor, voxel_size: float):
+def bbox2voxels(bbox: Tensor, voxel_size: float) -> Tensor:
     '''
     bbox2voxel: https://github.com/facebookresearch/NSVF/fairnr/modules/encoder.py#L1053
     bbox: array [min_x,y,z, max_x,y,z]
@@ -33,3 +33,16 @@ def trilinear_interp(sample_pts: Tensor, center_pts: Tensor, corner_feats: Tenso
     r = (2*p*offset - p - offset + 1).prod(dim=-1, keepdim=True) # <=> (p*offset + (1-p)*(1-offset)); [N, 8, 1]
     interp_feat = (corner_feats * r).sum(1) # [N, embed_dim]
     return interp_feat
+
+def offset_points(bits: int=2, n_dim: int=3, 
+    scale :float=-1, device :torch.device='cpu') -> Tensor:
+    '''
+    Return bits^n_dim meshgrid cube.
+    Args:
+        scale: -1 or 0. -1 -> [-1,1]; 0 -> [0, 1]
+    '''
+    c = torch.arange(bits, device=device)
+    offset = torch.cat(torch.meshgrid([c]*n_dim), -1).reshape(-1, n_dim) / (bits - 1.)
+    if scale == -1:
+        offset = 2 * offset - 1
+    return offset

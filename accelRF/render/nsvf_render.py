@@ -4,7 +4,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from torch import Tensor
+from accelRF.rep import Explicit3D
 from accelRF.render.nerf_render import volumetric_rendering
+from accelRF.rep.utils import offset_points
 
 def masked_scatter(mask: torch.BoolTensor, x: Tensor):
     B, K = mask.size()
@@ -35,6 +37,7 @@ class NSVFRender(nn.Module):
         voxel_embedder: nn.Module,
         model: nn.Module,
         point_sampler: nn.Module,
+        vox_rep: Explicit3D,
         early_stop_thres: float=0,
         bg_color: Optional[nn.Module]=None,
         white_bkgd: bool=False,
@@ -51,8 +54,9 @@ class NSVFRender(nn.Module):
         self.voxel_embedder = voxel_embedder
         self.model = model
         self.point_sampler = point_sampler
-        self.early_stop = (early_stop_thres != 0)
-        self.early_stop_thres = -np.log(early_stop_thres)
+        self.vox_rep = vox_rep
+        self.early_stop = (early_stop_thres > 0)
+        self.early_stop_thres = -np.log(early_stop_thres) if self.early_stop else 0
         self.chunk = chunk
         self.fwd_steps = fwd_steps
         self.bg_color = bg_color
@@ -111,7 +115,7 @@ class NSVFRender(nn.Module):
                             white_bkgd=self.white_bkgd, with_dist=True)   
                 ret = {'rgb': r_out['rgb'], 'disp': r_out['disp'], 'acc': r_out['acc']}
                 if 'feat_n2' in nn_out:
-                    ret['regz_term'] = (nn_out['feat_n2'] * r_out['weights']).sum(-1)[ray_hits]
+                    ret['regz_term'] = (nn_out['feat_n2'] * r_out['weights']).sum(-1)
             else:
                 ret = {'rgb': None, 'disp': None, 'acc': None}
             # TODO post-processing...
@@ -135,7 +139,7 @@ class NSVFRender(nn.Module):
         rays_d = rays_d[...,None,:].expand_as(pts)[mask_pts] # [n_pts, 3]
         pts, p2v_idx = pts[mask_pts], p2v_idx[mask_pts]
         
-        vox_embeds = self.voxel_embedder(pts, p2v_idx)
+        vox_embeds = self.voxel_embedder(pts, p2v_idx, self.vox_rep)
         nn_out = self.model(
             self.pts_embedder(vox_embeds), self.view_embedder(rays_d)
         )
@@ -151,3 +155,26 @@ class NSVFRender(nn.Module):
         if 'feat_n2' in nn_out:
             out['feat_n2'] = masked_scatter(mask_pts, nn_out['feat_n2'])
         return out, n_pts
+
+    @torch.no_grad()
+    def pruning(self, thres=0.5, bits=16):
+        '''
+        Based on NSVF's pruning function. fairnr/modules/encoder.py#L606
+        '''
+        center_pts = self.vox_rep.center_points # [n_vox, 3]
+        device = center_pts.device
+        n_vox, n_pts_vox = center_pts.shape[0], bits**3 # sample bits^3 points per voxel
+        rel_pts = offset_points(bits, scale=0, device=device) # [bits**3, 3], scale [0,1]
+        p2v_idx = torch.arange(n_vox, device=device) # [n_vox]
+        # get pruning scores
+        vox_chunk = (self.chunk - 1) // n_pts_vox + 1
+        scores = []
+        for i in range(0, n_vox, vox_chunk):
+            vox_embeds = self.voxel_embedder(rel_pts, p2v_idx[i:i+vox_chunk], 
+                                self.vox_rep, per_voxel=True) # [vc, bits**3, emb_dim]
+            sigma = self.model(self.pts_embedder(vox_embeds))['sigma'][...,0] # [vc, bits**3]
+            scores.append(torch.exp(-sigma.relu()).min(-1)[0]) # [vc]
+        scores = torch.cat(scores, 0) 
+        keep = (1 - scores) > thres
+        self.vox_rep.pruning(keep)
+        print(f"pruning done. # of voxels before: {keep.size(0)}, after: {keep.sum()} voxels")

@@ -35,7 +35,7 @@ class TestVoxelGrid(unittest.TestCase):
     
     def test_voxel_grid_class(self):
         vox_grid = VoxelGrid(self.bbox_pt, 0.4).to('cuda')
-        logging.info(vox_grid.voxel_shape)
+        logging.info(vox_grid.grid_shape)
         logging.info(vox_grid.center2corner.shape)
         logging.info(vox_grid.corner_points.shape)
         logging.info((vox_grid.center_points[0][None,:] - vox_grid.get_corner_points(0))/0.2)

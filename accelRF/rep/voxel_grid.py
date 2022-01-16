@@ -1,8 +1,11 @@
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 import numpy as np
 import torch
 from torch import Tensor
 import torch.nn as nn
+import torch.nn.functional as F
+
+from .utils import discretize_points, offset_points, trilinear_interp
 from .base import Explicit3D
 from .._C.rep import _ext
 
@@ -31,7 +34,6 @@ class VoxelGrid(Explicit3D):
         Given a center x's coords [i,j,k]. its corners' coords are [i,j,k] + {0,1}^3
         '''
         super().__init__()
-        self.voxel_size = voxel_size
         self.use_corner = use_corner
         self.bbox = bbox
         v_min, v_max = bbox[:3], bbox[3:]
@@ -39,28 +41,31 @@ class VoxelGrid(Explicit3D):
         # note the difference between torch.meshgrid and np.meshgrid.
         center_coords = torch.stack(torch.meshgrid([torch.arange(s) for s in steps]), -1) # s_x,s_y,s_z,3
         center_points = (center_coords * voxel_size + v_min).reshape(-1, 3) # start from lower bound
-        # self.center_coords = center_coords.to(device)
-        # self.center_points = center_points.to(device)
         # self.register_buffer('center_coords', center_coords)
-        self.register_buffer('center_points', center_points)
-        self.n_voxels = center_points.shape[0]
+        n_voxels = center_points.shape[0]
+        occupancy = torch.ones(n_voxels, dtype=torch.bool) # occupancy's length unchanges unless splitting
+
         # corner points
         if use_corner:
-            corner_coords = torch.stack(torch.meshgrid([torch.arange(s+1) for s in steps]), -1)
-            corner_points = (corner_coords * voxel_size + v_min - 0.5 * voxel_size).reshape(-1, 3) # flatten
-            offset = torch.stack(torch.meshgrid([torch.tensor([0,1])]*3),-1).reshape(-1,3) # [8, 3]
-            corner1d = torch.arange(corner_points.shape[0]).reshape(corner_coords.shape[:-1]) 
+            corner_shape = steps+1
+            n_corners = corner_shape.prod().item()
+            offset = offset_points().long() # [8, 3]
+            corner1d = torch.arange(n_corners).reshape(corner_shape.tolist()) 
             center2corner = (center_coords[...,None,:] + offset).reshape(-1, 8, 3) # [..., 8,3]
-            center2corner = corner1d[center2corner[...,0], center2corner[...,1], center2corner[...,2]]
-            # self.corner_coords = corner_coords.to(device)
-            # self.corner_points = corner_points.to(device)
-            # self.register_buffer('corner_coords', corner_coords)
-            self.register_buffer('corner_points', corner_points)
+            center2corner = corner1d[center2corner[...,0], center2corner[...,1], center2corner[...,2]] # [..., 8]
             self.register_buffer('center2corner', center2corner)
-            self.n_corners = corner_points.shape[0]
-        occupancy = torch.ones(*center_points.shape[:-1], dtype=torch.bool) # occupancy's length unchanges unless splitting
+            self.register_buffer('n_corners', n_corners)
+        
+        # keep min max voxels, for ray_intersection
+        max_ray_hit = min(steps.sum().item(), n_voxels)
+        # register_buffer for saving and loading.
         self.register_buffer('occupancy', occupancy)
-        self.voxel_shape = steps
+        self.register_buffer('grid_shape', steps) # self.grid_shape = steps
+        self.register_buffer('voxel_size', voxel_size)
+        self.register_buffer('center_points', center_points)
+        self.register_buffer('n_voxels', n_voxels)
+        self.register_buffer('max_ray_hit', max_ray_hit)
+
 
     def ray_intersect(self, rays_o: Tensor, rays_d: Tensor):
         '''
@@ -72,10 +77,9 @@ class VoxelGrid(Explicit3D):
             t_near?
             t_far?
         '''
-        max_hit = self.voxel_shape.sum().item()
         pts_idx_1d, t_near, t_far = _ext.aabb_intersect(
             rays_o.contiguous(), rays_d.contiguous(), 
-            self.center_points.contiguous(), self.voxel_size, max_hit)
+            self.center_points.contiguous(), self.voxel_size, self.max_ray_hit)
         t_near.masked_fill_(pts_idx_1d.eq(-1), MAX_DEPTH)
         t_near, sort_idx = t_near.sort(dim=-1)
         t_far = t_far.gather(-1, sort_idx)
@@ -93,12 +97,45 @@ class VoxelGrid(Explicit3D):
             self.center_points = self.center_points[keep].contiguous()
             self.occupancy.masked_scatter_(self.occupancy, keep)
             self.n_voxels = n_vox_left
+            self.max_ray_hit = self.get_max_ray_hit()
             if self.use_corner:
                 c2corner_idx = self.center2corner[keep] # [..., 8]
                 corner_idx, center2corner = c2corner_idx.unique(sorted=True, return_inverse=True) # [.] and [..., 8]
-                self.corner_points = self.corner_points[corner_idx].contiguous()
-                self.center2corner = self.center2corner.contiguous()
-                self.n_corners = self.corner_points.shape[0]
+                self.center2corner = center2corner.contiguous()
+                self.n_corners = corner_idx.shape[0]
+                return corner_idx
+
+    def splitting(self, feats: Optional[Tensor]=None):
+        self.voxel_size *= 0.5
+        half_voxel = self.voxel_size * 0.5
+        offset = offset_points(device=self.center_points.device) # [8, 3] scale [0,1]
+        self.center_points = (self.center_points[:,None,:] + (offset*2-1) * half_voxel).reshape(-1, 3)
+        self.n_voxels = self.center_points.shape[0]
+        self.grid_shape = self.grid_shape * 2
+        self.occupancy = self.occupancy[...,None].repeat_interleave(8, -1).reshape(-1)
+        self.max_ray_hit = self.get_max_ray_hit()
+        if self.use_corner:
+            center_coords = discretize_points(self.center_points, self.voxel_size) # [N ,3]
+            corner_coords = (center_coords[:,None,:] + offset.long()).reshape(-1, 3) # [N*8, 3]
+            unique_corners, center2corner = torch.unique(corner_coords, dim=0, sorted=True, return_inverse=True)
+            self.n_corners = unique_corners.shape[0]
+            old_ct2cn = self.center2corner
+            self.center2corner = center2corner.reshape(-1, 8)
+            if feats is not None:
+                cn2oldct = center2corner.new_zeros(self.n_corners).scatter_(
+                    0, center2corner, torch.arange(corner_coords.shape[0], device=feats.device) // 64)
+                feats_idx = old_ct2cn[cn2oldct] # [N_cn, 8]
+                _feats = F.embedding(feats_idx, feats) # [N_cn, 8, D_f]
+                new_feats = trilinear_interp(center_coords, corner_coords-0.5, _feats, 1., offset)
+                return new_feats
+
+    def get_max_ray_hit(self):
+        # keep min max voxels, for ray_intersection
+        min_voxel = self.center_points.min(0)[0]
+        max_voxel = self.center_points.max(0)[0]
+        aabb_box = ((max_voxel - min_voxel) / self.voxel_size).round().long() + 1
+        max_ray_hit = min(aabb_box.sum().item(), self.n_voxels)
+        return max_ray_hit
 
     def get_edge(self):
         NotImplemented

@@ -176,5 +176,19 @@ class NSVFRender(nn.Module):
             scores.append(torch.exp(-sigma.relu()).min(-1)[0]) # [vc]
         scores = torch.cat(scores, 0) 
         keep = (1 - scores) > thres
-        self.vox_rep.pruning(keep)
+        emb_idx = self.vox_rep.pruning(keep)
+        if emb_idx is not None:
+            new_embeddings = self.voxel_embedder.embeddings.weights[emb_idx]
+            self.voxel_embedder.update_embeddings(new_embeddings)
         print(f"pruning done. # of voxels before: {keep.size(0)}, after: {keep.sum()} voxels")
+
+    @torch.no_grad()
+    def splitting(self):
+        embeddings = self.voxel_embedder.embeddings.weights
+        new_embeddings = self.vox_rep.splitting(embeddings)
+        if new_embeddings is not None:
+            self.voxel_embedder.update_embeddings(new_embeddings)
+        
+    @torch.no_grad()
+    def half_stepsize(self):
+        self.point_sampler.half_stepsize()

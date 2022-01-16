@@ -63,12 +63,12 @@ def voxel_cdf_sample(
 # wrap the sample functions into a `nn.Module` for better extensibility
 class NSVFPointSampler(nn.Module):
     def __init__(self, step_size: float, fixed_samples: int=0, 
-        with_base_hits: bool=True, det: bool=False):
+        with_base_hits: bool=True, det: bool=True):
         super().__init__()
-        self.step_size = step_size
         self.fixed_samples = fixed_samples
         self.with_base_hits = with_base_hits
         self.det = det 
+        self.register_buffer('step_size', step_size)
     
     def half_stepsize(self):
         self.step_size *= 0.5

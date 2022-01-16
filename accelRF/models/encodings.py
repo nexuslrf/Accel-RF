@@ -48,9 +48,8 @@ class VoxelEncoding(nn.Module):
     def __init__(self, n_embeds: int, embed_dim: int):
         super().__init__()
         self.embed_dim = embed_dim
-        self.n_embeds = n_embeds
-        self.voxel_embeddings = nn.Embedding(self.n_embeds, embed_dim)
-        nn.init.normal_(self.voxel_embeddings.weight, mean=0, std=embed_dim ** -0.5)
+        self.embeddings = nn.Embedding(n_embeds, embed_dim)
+        nn.init.normal_(self.embeddings.weight, mean=0, std=embed_dim ** -0.5)
         interp_offset = torch.stack(torch.meshgrid([torch.tensor([0.,1.])]*3),-1).reshape(-1,3)
         self.register_buffer('interp_offset', interp_offset)
 
@@ -72,7 +71,7 @@ class VoxelEncoding(nn.Module):
         p2v_idx = p2v_idx.long()
         center_pts = vox_rep.center_points[p2v_idx] # (N, 3)
         corner_idx = vox_rep.center2corner[p2v_idx] # (N, 8)
-        embeds = self.voxel_embeddings(corner_idx) # (N, 8, embed_dim)
+        embeds = self.embeddings(corner_idx) # (N, 8, embed_dim)
         
         # interpolation
         if not per_voxel:
@@ -84,3 +83,7 @@ class VoxelEncoding(nn.Module):
                     .prod(dim=-1, keepdim=True)[None,:] # [1, N_ppv, 8, 1]
             interp_embeds = (embeds[:,None,:] * r).sum(-2) # [N_v, N_ppv, embed_dim]
         return interp_embeds
+
+    def update_embeddings(self, new_embeddings):
+        self.embeddings.weight = nn.Parameter(new_embeddings)
+        self.embeddings.num_embeddings = new_embeddings.shape[0]

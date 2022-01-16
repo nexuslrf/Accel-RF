@@ -8,9 +8,10 @@ class Explicit3D(nn.Module):
     center2corner: Tensor
     n_voxels: int
     n_corners: int
-    voxel_shape: Tensor
+    grid_shape: Tensor
     voxel_size: float
-    
+    occupancy: Tensor
+
     def __init__(self):
         super().__init__()
     
@@ -20,4 +21,10 @@ class Explicit3D(nn.Module):
         NotImplemented
 
     def get_corner_points(self, center_idx) -> Tensor:
+        NotImplemented
+    
+    def pruning(self, keep: Tensor):
+        NotImplemented
+    
+    def splitting(self):
         NotImplemented

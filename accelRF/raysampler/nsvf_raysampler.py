@@ -60,6 +60,9 @@ class VoxIntersectRaySampler(BaseRaySampler):
             rays_o, rays_d = rays_o[sampled_mask], rays_d[sampled_mask]
             gt_rgb = gt_rgb[sampled_mask] if gt_rgb is not None else None
 
+        _max_hit = vox_idx.ne(-1).any(0).sum()
+        vox_idx, t_near, t_far = vox_idx[:,:_max_hit], t_near[:,:_max_hit], t_far[:,:_max_hit]
+        
         out = {
             'rays_o': rays_o, 'rays_d': rays_d, 
             'vox_idx': vox_idx, 't_near': t_near, 't_far': t_far,

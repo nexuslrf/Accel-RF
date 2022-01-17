@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple
 import torch
 import torch.nn as nn
-from torch.tensor import Tensor
+from torch import Tensor
 
 __all__ = ['NSVF_MLP', 'BackgroundField']
 

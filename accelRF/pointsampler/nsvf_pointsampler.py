@@ -68,7 +68,7 @@ class NSVFPointSampler(nn.Module):
         self.fixed_samples = fixed_samples
         self.with_base_hits = with_base_hits
         self.det = det 
-        self.register_buffer('step_size', step_size)
+        self.register_buffer('step_size', torch.tensor(step_size))
     
     def half_stepsize(self):
         self.step_size *= 0.5

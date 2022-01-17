@@ -1,7 +1,7 @@
 from typing import List, Optional
 import torch
 import torch.nn as nn
-from torch.tensor import Tensor
+from torch import Tensor
 
 class NeRF(nn.Module):
     def __init__(self, 

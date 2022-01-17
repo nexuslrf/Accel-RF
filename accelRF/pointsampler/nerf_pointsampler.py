@@ -67,7 +67,8 @@ def cdf_sample(
     '''
     cdf_sample relies on (i) coarse_sample's results (ii) output of coarse MLP
     In this function, each ray will have the same number of sampled points, 
-    there's a other version cdf_sample function, that sample variable points for different rays.
+    there's  voxel_cdf_sample function, that sample variable points for different rays.
+    TODO@chensjtu we also plan to write a CUDA version of normal cdf sample, which can avoid using sort.
     Args:
         rays_o: Tensor, the orgin of rays. [N_rays, 3]
         rays_d: Tensor, the direction of rays. [N_rays, 3]

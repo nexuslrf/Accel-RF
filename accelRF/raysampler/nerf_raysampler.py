@@ -70,6 +70,7 @@ class PerViewRaySampler(BaseRaySampler):
         precrop: bool=False,
         precrop_frac: float=0.5,
         precrop_iters: int=500,
+        full_rays: bool=False,
         device: torch.device='cpu',
         start_epoch: int=0,
         rank: int=-1,
@@ -83,8 +84,11 @@ class PerViewRaySampler(BaseRaySampler):
         self.precrop = precrop
         self.precrop_frac = precrop_frac
         self.precrop_iters = precrop_iters - start_epoch
+        self.full_rays = full_rays
         #
         H, W, focal = self.dataset.get_hwf()
+        if full_rays:
+            self.N_rand = (H*W - 1) // self.n_replica + 1
         # the current solution for iters after `precrop_iters`
         if self.precrop and self.precrop_iters > 0: 
             dH = int(H//2 * self.precrop_frac)
@@ -132,16 +136,20 @@ class PerViewRaySampler(BaseRaySampler):
             cam_viewdir = img_dict['pose'][:3,2]
             target = img_dict['gt_img'] # if 'gt_img' in img_dict else None
             rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose) # TODO optimize it
-
-            # To avoid manually setting numpy random seed for ender user when num_workers > 1, 
-            # replace np.random.choice with torch.randperm
-            # np.random.choice(self.coords.shape[0], size=[self.N_rand], replace=False)
-            rand_inds = torch.randperm(self.coords.shape[0], generator=self.rng, device=self.device) # (len_shape, 1)
-            select_inds = rand_inds[self.rank*self.N_rand:(self.rank+1)*self.N_rand]  # (N_rand,)
-            select_coords = self.coords[select_inds].long()  # (N_rand, 2)
-            output['rays_o'].append(rays_o[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
-            output['rays_d'].append(rays_d[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
-            output['gt_rgb'].append(target[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
+            if not self.full_rays:
+                # To avoid manually setting numpy random seed for ender user when num_workers > 1, 
+                # replace np.random.choice with torch.randperm
+                # np.random.choice(self.coords.shape[0], size=[self.N_rand], replace=False)
+                rand_inds = torch.randperm(self.coords.shape[0], generator=self.rng, device=self.device) # (len_shape, 1)
+                select_inds = rand_inds[self.rank*self.N_rand:(self.rank+1)*self.N_rand]  # (N_rand,)
+                select_coords = self.coords[select_inds].long()  # (N_rand, 2)
+                output['rays_o'].append(rays_o[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
+                output['rays_d'].append(rays_d[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
+                output['gt_rgb'].append(target[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
+            else:
+                output['rays_o'].append(rays_o.reshape(-1, 3)[self.rank*self.N_rand:(self.rank+1)*self.N_rand])  # (N_rand, 3)
+                output['rays_d'].append(rays_d.reshape(-1, 3)[self.rank*self.N_rand:(self.rank+1)*self.N_rand])  # (N_rand, 3)
+                output['gt_rgb'].append(target.reshape(-1, 3)[self.rank*self.N_rand:(self.rank+1)*self.N_rand])  # (N_rand, 3)
         output = {k: torch.cat(output[k], 0) for k in output} # (N_views*N_rand, 3)
         # output['coords'] = self.coords # just for debug
         return output

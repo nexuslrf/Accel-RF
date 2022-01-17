@@ -85,8 +85,9 @@ class VoxelEncoding(nn.Module):
         return interp_embeds
 
     def update_embeddings(self, new_embeddings):
-        self.embeddings.weight = nn.Parameter(new_embeddings)
-        self.embeddings.num_embeddings = new_embeddings.shape[0]
+        # https://stackoverflow.com/a/55766749/14835451
+        n_emb = new_embeddings.shape[0]
+        self.embeddings = nn.Embedding.from_pretrained(new_embeddings, freeze=False)
     
     def get_weight(self):
         return self.embeddings.weight

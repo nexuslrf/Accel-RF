@@ -26,7 +26,8 @@ def fill_in(shape, hits: Tensor, input: Tensor, initial=0.):
     if input is not None:
         if len(shape) == 1:
             output = output.masked_scatter(hits, input)
-        output = output.masked_scatter(hits.unsqueeze(-1).expand(*shape), input)
+        else:
+            output = output.masked_scatter(hits.unsqueeze(-1).expand(*shape), input)
     return output
 
 class NSVFRender(nn.Module):
@@ -148,7 +149,7 @@ class NSVFRender(nn.Module):
         out = {'rgb': masked_scatter(mask_pts, nn_out['rgb'])}
         if dists is not None:
             dists = dists[mask_pts]
-            free_energy = F.relu(nn_out['sigma']) * dists # activation is here!
+            free_energy = F.relu(nn_out['sigma']) * dists[...,None] # activation is here!
             out['free_energy'] = masked_scatter(mask_pts, free_energy)
         else:
             out['sigma'] = masked_scatter(mask_pts, nn_out['sigma'])
@@ -176,19 +177,36 @@ class NSVFRender(nn.Module):
             scores.append(torch.exp(-sigma.relu()).min(-1)[0]) # [vc]
         scores = torch.cat(scores, 0) 
         keep = (1 - scores) > thres
+        # scores = torch.rand(n_vox, device=device) # only for test
+        # keep = scores > 0.2
         emb_idx = self.vox_rep.pruning(keep)
+        done = False
         if emb_idx is not None:
-            new_embeddings = self.voxel_embedder.embeddings.weights[emb_idx]
+            new_embeddings = self.voxel_embedder.get_weight()[emb_idx]
             self.voxel_embedder.update_embeddings(new_embeddings)
-        print(f"pruning done. # of voxels before: {keep.size(0)}, after: {keep.sum()} voxels")
+            done = True
+            print(f"pruning done. # of voxels before: {keep.size(0)}, after: {keep.sum()} voxels")
+        # release gpu mem
+        torch.cuda.empty_cache()
+        return done
 
     @torch.no_grad()
     def splitting(self):
-        embeddings = self.voxel_embedder.embeddings.weights
+        n_voxel_old = self.vox_rep.n_voxels
+        embeddings = self.voxel_embedder.get_weight()
         new_embeddings = self.vox_rep.splitting(embeddings)
+        done = False
         if new_embeddings is not None:
             self.voxel_embedder.update_embeddings(new_embeddings)
-        
+            done = True
+        print(f"splitting done. # of voxels before: {n_voxel_old}, after: {self.vox_rep.n_voxels} voxels")
+        # release gpu mem
+        torch.cuda.empty_cache()
+        return done
+
     @torch.no_grad()
     def half_stepsize(self):
+        old_stepsize = self.point_sampler.step_size
         self.point_sampler.half_stepsize()
+        print(f'stepsize: {old_stepsize} -> {self.point_sampler.step_size}')
+        torch.cuda.empty_cache()

@@ -37,9 +37,7 @@ class TestVoxelGrid(unittest.TestCase):
         vox_grid = VoxelGrid(self.bbox_pt, 0.4).to('cuda')
         logging.info(vox_grid.grid_shape)
         logging.info(vox_grid.center2corner.shape)
-        logging.info(vox_grid.corner_points.shape)
-        logging.info((vox_grid.center_points[0][None,:] - vox_grid.get_corner_points(0))/0.2)
-        logging.info(vox_grid.get_corner_points(torch.arange(3)).shape)
+        logging.info(f'{vox_grid.center2corner[0]}, {vox_grid.center2corner[1]}')
 
     @unittest.SkipTest
     def test_ray_intersect(self):
@@ -87,6 +85,30 @@ class TestVoxelGrid(unittest.TestCase):
         inds_m, min_depth_m, max_depth_m, hits = vox_grid.ray_intersect(rays_o_, rays_d_)
         self.assertEqual(inds_x.sum() - inds_m.sum(), 0)
         print(inds_m.shape, hits.shape)
+
+    def test_splitting(self):
+        logging.info('Test splitting')
+        vox_grid = VoxelGrid(self.bbox_pt, 0.4).to('cuda')
+        logging.info(vox_grid.grid_shape)
+        logging.info(vox_grid.center2corner.shape)
+        logging.info(f'{vox_grid.center2corner[0]}, {vox_grid.center2corner[1]}')
+        vox_grid.splitting()
+        logging.info(vox_grid.grid_shape)
+        logging.info(vox_grid.center2corner.shape)
+        logging.info(f'{vox_grid.center2corner[0]}, {vox_grid.center2corner[1]}')
+
+    def test_pruning(self):
+        logging.info('Test pruning')
+        vox_grid = VoxelGrid(self.bbox_pt, 0.4).to('cuda')
+        keep = torch.rand(vox_grid.n_voxels, device=vox_grid.center_points.device) < 0.6
+        logging.info(vox_grid.center2corner.shape)
+        logging.info(vox_grid.n_corners)
+        logging.info(f'{keep.sum()}, {keep.shape}')
+        corner_idx = vox_grid.pruning(keep)
+        logging.info(vox_grid.center2corner.shape)
+        logging.info(vox_grid.n_corners)
+        logging.info(corner_idx.shape)
+
 
 if __name__ == '__main__':
     unittest.main(exit=False)

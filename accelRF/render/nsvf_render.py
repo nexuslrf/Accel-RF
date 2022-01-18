@@ -9,11 +9,11 @@ from accelRF.render.nerf_render import volumetric_rendering
 from accelRF.rep.utils import offset_points
 
 def masked_scatter(mask: torch.BoolTensor, x: Tensor):
-    B, K = mask.size()
+    mask_shape = mask.shape
     if x.dim() == 1:
-        return x.new_zeros(B, K).masked_scatter(mask, x)
-    return x.new_zeros(B, K, x.size(-1)).masked_scatter(
-        mask.unsqueeze(-1).expand(B, K, x.size(-1)), x)
+        return x.new_zeros(*mask_shape).masked_scatter(mask, x)
+    return x.new_zeros(*mask_shape, x.size(-1)).masked_scatter(
+        mask.unsqueeze(-1).expand(*mask_shape, x.size(-1)), x)
 
 def fill_in(shape, hits: Tensor, input: Tensor, initial=0.):
     if torch.Size(shape) == input.shape:
@@ -42,6 +42,7 @@ class NSVFRender(nn.Module):
         early_stop_thres: float=0,
         bg_color: Optional[nn.Module]=None,
         white_bkgd: bool=False,
+        min_color: int=-1, # note gt_rbg is [0,1] by default. the final out rgb always [0,1] scale
         fwd_steps: int=4,
         chunk: int=1024*64
     ):
@@ -62,6 +63,7 @@ class NSVFRender(nn.Module):
         self.fwd_steps = fwd_steps
         self.bg_color = bg_color
         self.white_bkgd = (white_bkgd and bg_color is None)
+        self.min_color = min_color
 
 
     def forward(self, rays_o: Tensor, rays_d: Tensor, vox_idx: Tensor, 
@@ -74,10 +76,11 @@ class NSVFRender(nn.Module):
         '''
         n_rays = ray_hits.shape[0]
         if n_rays > self.chunk:
-            ret = [self.forward(rays_o[ci:ci+self.chunk], rays_d[ci:ci+self.chunk]) 
+            ret = [self.forward(rays_o[ci:ci+self.chunk], rays_d[ci:ci+self.chunk], vox_idx[ci:ci+self.chunk], 
+                                t_near[ci:ci+self.chunk], t_far[ci:ci+self.chunk], ray_hits[ci:ci+self.chunk]) 
                         for ci in range(0, n_rays, self.chunk)]
             ret = {
-                k: torch.cat([out[k] for out in ret], 0)
+                k: torch.cat([out[k] for out in ret if out[k] is not None], 0)
                 for k in ret[0]
             }
             return ret
@@ -87,14 +90,16 @@ class NSVFRender(nn.Module):
                 rays_o, rays_d = rays_o[ray_hits], rays_d[ray_hits] # [n_hits, 3]
                 # point sampling
                 sample_out = self.point_sampler(rays_o, rays_d, vox_idx, t_near, t_far)
-                pts, p2v_idx, t_vals, dists = sample_out # [n_hits, max_samples] + [3], [], []
+                pts, p2v_idx, t_vals, dists = sample_out # [n_hits, max_samples] + [3], [], [], []
                 mask_pts = p2v_idx.ne(-1)
-                max_samples= pts.shape[1]
+                max_samples= mask_pts.shape[1]
                 n_pts_fwd, start_step = 0, 0
                 accum_log_T = 0
                 nn_out = []
                 for i in range(0, max_samples, self.fwd_steps):
                     n_pts_step = mask_pts[:, i:i+self.fwd_steps].sum()
+                    if n_pts_step + n_pts_fwd == 0:
+                        break # or continue
                     if (i+self.fwd_steps >= max_samples) or (n_pts_fwd + n_pts_step > self.chunk):
                         l, r = start_step, i+self.fwd_steps
                         out, n_pts = self.step_forward(
@@ -109,19 +114,23 @@ class NSVFRender(nn.Module):
                                 mask_pts[mask_early_stop] = 0
                     else:
                         n_pts_fwd += n_pts_step
+                        
                 nn_out = {
-                    k: torch.cat([out[k] for out in nn_out], 1) for k in nn_out[0]
+                    k: torch.cat([out[k] for out in nn_out], 1) 
+                    for k in nn_out[0]
                 }
-                r_out = volumetric_rendering(nn_out['rgb'], nn_out['free_energy'], t_vals, 
+                _max_samples = nn_out['rgb'].shape[1] # _max_sample might smaller than max_samples
+                nn_out['rgb'] = nn_out['rgb'].sigmoid() if self.min_color == 0 else (nn_out['rgb'] + 1)/2
+                
+                r_out = volumetric_rendering(nn_out['rgb'], nn_out['free_energy'], t_vals[...,:_max_samples], 
                             white_bkgd=self.white_bkgd, with_dist=True)   
                 ret = {'rgb': r_out['rgb'], 'disp': r_out['disp'], 'acc': r_out['acc']}
                 if 'feat_n2' in nn_out:
                     ret['regz_term'] = (nn_out['feat_n2'] * r_out['weights']).sum(-1)
             else:
                 ret = {'rgb': None, 'disp': None, 'acc': None}
-            # TODO post-processing...
             # fill_in un-hitted holes
-            ret['rgb'] = fill_in((n_rays, 3), ray_hits, ret['rgb'], 0.0)
+            ret['rgb'] = fill_in((n_rays, 3), ray_hits, ret['rgb'], 1.0 if self.white_bkgd else 0.0)
             ret['disp'] = fill_in((n_rays,), ray_hits, ret['disp'], 0.0)
             ret['acc'] = fill_in((n_rays, ), ray_hits, ret['acc'], 0.0)
             if self.bg_color is not None:

@@ -83,13 +83,8 @@ def main():
         chunk=args.chunk * n_gpus if args.local_rank < 0 else args.chunk,
     ).to(device)
         
-    if args.local_rank >=0:
-        nsvf_render_ = torch.nn.parallel.DistributedDataParallel(nsvf_render, device_ids=[args.local_rank])
-    else:
-        nsvf_render_ = nn.DataParallel(nsvf_render)
-    # nsvf_render_ = nsvf_render
     # create optimizer
-    optimizer  = optim.Adam(nsvf_render_.parameters(), args.lrate, betas=(0.9, 0.999))
+    optimizer  = optim.Adam(nsvf_render.parameters(), args.lrate, betas=(0.9, 0.999))
     start = 0
     # load checkpoint
     if args.ft_path is not None and args.ft_path!='None':
@@ -101,13 +96,27 @@ def main():
         print('Load from: ', ckpt_path)
         ckpt = torch.load(ckpt_path, map_location=device)
         start = ckpt['global_step']
+        n_voxels, n_corners, grid_shape = ckpt['n_voxels'], ckpt['n_corners'], ckpt['grid_shape']
+        if n_voxels != vox_grid.n_voxels:
+            vox_grid.load_adjustment(n_voxels, grid_shape)
+            nsvf_render.voxel_embedder.load_adjustment(n_corners)
+            optimizer.param_groups.clear(); optimizer.state.clear()
+            optimizer.add_param_group({'params':nsvf_render.parameters()})
         try:
             optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+            optimizer.param_groups[0]['initial_lr'] = args.lrate
         except:
             pass
         nsvf_render.load_state_dict(ckpt['state_dict'])
 
     lr_sched = optim.lr_scheduler.ExponentialLR(optimizer, 0.1**(1/(args.lrate_decay*1000)), last_epoch=start-1)
+    
+    # parallelization
+    if args.local_rank >=0:
+        nsvf_render_ = torch.nn.parallel.DistributedDataParallel(nsvf_render, device_ids=[args.local_rank])
+    else:
+        nsvf_render_ = nn.DataParallel(nsvf_render)
+    # nsvf_render_ = nsvf_render
 
     # prepare dataloader
     train_base_raysampler = \
@@ -174,6 +183,8 @@ def main():
                 'global_step': i+1,
                 'state_dict': nsvf_render.state_dict(), # keys start with 'module'
                 'optimizer_state_dict': optimizer.state_dict(),
+                'n_voxels': vox_grid.n_voxels.item(), 'n_corners': vox_grid.n_corners.item(),
+                'grid_shape': vox_grid.grid_shape.tolist()
             }, path)
 
         # model refinement
@@ -189,12 +200,12 @@ def main():
         if reset_module:
             if args.local_rank >= 0:
                 del nsvf_render_
-                nsvf_render_ = nn.parallel.DistributedDataParallel(...)
+                nsvf_render_ = nn.parallel.DistributedDataParallel(nsvf_render, device_ids=[args.local_rank])
             optimizer.zero_grad()
             # https://discuss.pytorch.org/t/delete-parameter-group-from-optimizer/46814/8
             optimizer.param_groups.clear() # optimizer.param_group = []
             optimizer.state.clear() # optimizer.state = defaultdict(dict)
-            optimizer.add_param_group({'params':nsvf_render_.parameters()}) # necessary!
+            optimizer.add_param_group({'params':nsvf_render.parameters()}) # necessary!
 
 
 def eval(nsvf_render, rayloader, img_hw, testsavedir):
@@ -205,7 +216,7 @@ def eval(nsvf_render, rayloader, img_hw, testsavedir):
         vox_idx, t_near, t_far = ray_batch['vox_idx'][0], ray_batch['t_near'][0], ray_batch['t_far'][0]
         hits, gt_rgb = ray_batch['hits'][0], ray_batch['gt_rgb'][0]
         with torch.no_grad():
-            render_out = nsvf_render(rays_o, rays_d)
+            render_out = nsvf_render(rays_o, rays_d, vox_idx, t_near, t_far, hits)
         psnr = mse2psnr(img2mse(gt_rgb, render_out['rgb']))
         imageio.imwrite(os.path.join(testsavedir, f'{i:03d}.png'), 
                     to8b(render_out['rgb'].cpu().numpy()).reshape(*img_hw,-1))

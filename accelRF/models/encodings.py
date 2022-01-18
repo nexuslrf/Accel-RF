@@ -89,5 +89,10 @@ class VoxelEncoding(nn.Module):
         n_emb = new_embeddings.shape[0]
         self.embeddings = nn.Embedding.from_pretrained(new_embeddings, freeze=False)
     
+    def load_adjustment(self, num_embeds):
+        w = self.embeddings.weight
+        new_w = w.new_empty(num_embeds, self.embed_dim)
+        self.embeddings = nn.Embedding.from_pretrained(new_w, freeze=False)
+    
     def get_weight(self):
         return self.embeddings.weight

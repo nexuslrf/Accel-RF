@@ -81,6 +81,7 @@ def main():
         start = ckpt['global_step']
         try:
             optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+            optimizer.param_groups[0]['initial_lr'] = args.lrate
         except:
             pass
         nerf_render.load_state_dict(ckpt['state_dict'])

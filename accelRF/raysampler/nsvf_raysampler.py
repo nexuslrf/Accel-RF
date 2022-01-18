@@ -35,13 +35,16 @@ class VoxIntersectRaySampler(BaseRaySampler):
     def __init__(
         self, N_rand: int,
         raysampler: BaseRaySampler, vox_rep: Explicit3D, 
-        mask_sample: bool=True, device: torch.device='cuda') -> None:
+        mask_sample: bool=True, device: torch.device='cuda',
+        num_workers: int=1) -> None:
 
         super().__init__(None, N_rand, length=raysampler.length, device=device)
         self.raysampler = raysampler
         self.vox_rep = vox_rep
         self.mask_sample = mask_sample
-        self.raysampler_load = DataLoader(self.raysampler, num_workers=1, pin_memory=True)
+        if not self.mask_sample:
+            self.N_rand = raysampler.N_rand
+        self.raysampler_load = DataLoader(self.raysampler, num_workers=num_workers, pin_memory=True)
         self.raysampler_itr = iter(self.raysampler_load)
 
     def __getitem__(self, index):
@@ -61,7 +64,7 @@ class VoxIntersectRaySampler(BaseRaySampler):
             gt_rgb = gt_rgb[sampled_mask] if gt_rgb is not None else None
 
         _max_hit = vox_idx.ne(-1).any(0).sum()
-        vox_idx, t_near, t_far = vox_idx[:,:_max_hit], t_near[:,:_max_hit], t_far[:,:_max_hit]
+        vox_idx, t_near, t_far = vox_idx[:,:_max_hit], t_near[:,:_max_hit], t_far[:,:_max_hit] # reduce empty points
         
         out = {
             'rays_o': rays_o, 'rays_d': rays_d, 

@@ -54,7 +54,7 @@ class RenderingRaySampler(BaseRaySampler):
     Just a alias of BaseRaySampler.
     '''
     def __init__(
-        self, dataset: BaseDataset, N_rand: int, device: torch.device = 'cpu', 
+        self, dataset: BaseDataset, N_rand: int=0, device: torch.device = 'cpu', 
         rank: int = -1, n_replica: int = 1, seed: Optional[int] = None) -> None:
 
         super().__init__(dataset, N_rand, length=None, device=device, rank=rank, n_replica=n_replica, seed=seed)

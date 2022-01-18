@@ -66,7 +66,7 @@ class NSVF_MLP(nn.Module):
         D_sigma: int=2, W_sigma: int=128, skips_sigma: List[int]=[],
         D_rgb: int=5, W_rgb: int=256, skips_rgb: List[int]=[],
         layernorm: bool=True, with_activation: bool=False, 
-        with_n2_term: bool=True 
+        with_reg_term: bool=True 
         ):
         '''
         Re-organize NSVF's MLP definition into one simple nn.Module, easier for users to see 
@@ -74,7 +74,7 @@ class NSVF_MLP(nn.Module):
         NSVF's core MLP is actually very similar to NeRF's MLP
         '''
         super().__init__()
-        self.with_n2_term = with_n2_term
+        self.with_reg_term = with_reg_term
         self.feat_layers = \
             ImplicitField(in_ch_pts, W_feat, W_feat, D_feat, with_ln=layernorm, skips=skips_feat)
 
@@ -95,7 +95,7 @@ class NSVF_MLP(nn.Module):
         feat = self.feat_layers(pts)
         sigma = self.sigma_layers(feat)
         ret = {'sigma': sigma}
-        if self.with_n2_term and self.training:
+        if self.with_reg_term and self.training:
             ret['feat_n2'] = (feat ** 2).sum(-1)
         if dir is None:
             return ret
@@ -108,7 +108,7 @@ class BackgroundField(nn.Module):
     """
     Background (we assume a uniform color)
     """
-    def __init__(self, out_dim=3, bg_color=1.0, min_color=-1, 
+    def __init__(self, out_dim=3, bg_color=1.0, min_color=0, 
         trainable=True, background_depth=5.0):
         '''
         Args:
@@ -126,7 +126,7 @@ class BackgroundField(nn.Module):
                 bg_color = [b * 2 - 1 for b in bg_color]
             if len(bg_color) == 1:
                 bg_color = bg_color + bg_color + bg_color
-            bg_color = torch.tensor(bg_color)
+            bg_color = torch.tensor(bg_color).float()
         else:    
             bg_color = torch.ones(out_dim).uniform_()
             if min_color == -1:

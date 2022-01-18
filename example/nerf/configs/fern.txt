@@ -1,5 +1,5 @@
 expname = fern_test
-basedir = ./logs
+basedir = ./logs/nerf
 datadir = /data/stu01/ruofan/nerf-experiment/data/nerf_llff_data/
 scene = fern
 dataset_type = llff

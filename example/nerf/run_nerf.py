@@ -16,7 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 from accelRF.datasets import Blender, LLFF
 from accelRF.raysampler import NeRFRaySampler
 from accelRF.pointsampler import NeRFPointSampler
-from accelRF.models import PositionalEncoding, NeRF
+from accelRF.models import PositionalEncoding, NeRF, nerf
 from accelRF.render.nerf_render import NeRFRender
 
 parser = config_parser()
@@ -49,8 +49,8 @@ def main():
     # create model
     input_ch, input_ch_views = (2*args.multires+1)*3, (2*args.multires_views+1)*3
     nerf_render = NeRFRender(
-        embedder_pts=PositionalEncoding(N_freqs=args.multires) if args.i_embed==0 else None,
-        embedder_views=PositionalEncoding(N_freqs=args.multires_views) if args.i_embed==0 else None,
+        embedder_pts=PositionalEncoding(N_freqs=args.multires) if args.multires==0 else None,
+        embedder_views=PositionalEncoding(N_freqs=args.multires_views) if args.multires_views==0 else None,
         point_sampler=NeRFPointSampler(
             N_samples=args.N_samples, N_importance=args.N_importance, 
             near=dataset.near, far=dataset.far, perturb=args.perturb, lindisp=args.lindisp),
@@ -59,13 +59,13 @@ def main():
         fine_model=NeRF(in_ch_pts=input_ch, in_ch_dir=input_ch_views, 
             D=args.netdepth, W=args.netwidth, skips=[4]) if args.N_importance > 0 else None,
         white_bkgd=args.white_bkgd,
-        chunk=args.chunk * n_gpus,
+        chunk=args.chunk * n_gpus if args.local_rank < 0 else args.chunk,
         use_ndc=(not args.no_ndc), hwf=dataset.get_hwf()
-    )
+    ).to(device)
     if args.local_rank >=0:
-        nerf_render = torch.nn.parallel.DistributedDataParallel(nerf_render.to(device), device_ids=[args.local_rank])
+        nerf_render = torch.nn.parallel.DistributedDataParallel(nerf_render, device_ids=[args.local_rank])
     else:
-        nerf_render = nn.DataParallel(nerf_render.jit_script()).to(device)
+        nerf_render = nn.DataParallel(nerf_render.jit_script())
     # create optimizer
     optimizer  = optim.Adam(nerf_render.parameters(), args.lrate, betas=(0.9, 0.999))
     start = 0
@@ -132,7 +132,9 @@ def main():
                     rays_o, rays_d = ray_batch['rays_o'].to(device), ray_batch['rays_d'].to(device)
                     gt_rgb = ray_batch['gt_rgb'].to(device)
                     with torch.no_grad():
+                        nerf_render.eval()
                         render_out = nerf_render(rays_o, rays_d)
+                        nerf_render.train()
                     psnr = mse2psnr(img2mse(render_out['rgb'], gt_rgb))
                     tb_writer.add_scalar('psnr_eval', psnr, i)
                     H, W, _ = dataset.get_hwf()
@@ -144,7 +146,7 @@ def main():
                         tb_writer.add_image('rgb0', to8b(render_out['rgb0'].cpu().numpy()).reshape(H,W,-1), i, dataformats='HWC')
                         tb_writer.add_image('disp0', render_out['disp0'].reshape(H,W), i, dataformats="HW")
                     
-        if i%args.i_testset == 0 and i > 0:
+        if i%args.i_testset == 0 and i > 0 and args.local_rank <= 0:
             eval(nerf_render, test_rayloader, dataset.get_hwf()[:2], os.path.join(savedir, f'testset_{i:06d}'))
         
         if (i+1)%args.i_weights==0 and args.local_rank <= 0:

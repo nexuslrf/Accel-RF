@@ -48,7 +48,11 @@ class VoxIntersectRaySampler(BaseRaySampler):
         self.raysampler_itr = iter(self.raysampler_load)
 
     def __getitem__(self, index):
-        ray_batch = next(self.raysampler_itr)
+        try:
+            ray_batch = next(self.raysampler_itr)
+        except StopIteration:
+            self.raysampler_itr = iter(self.raysampler_load)
+            ray_batch = next(self.raysampler_itr)
         rays_o, rays_d = [ray_batch[k][0].to(self.device) for k in ('rays_o', 'rays_d')] # [N_rays, 3]
         gt_rgb = ray_batch['gt_rgb'][0].to(self.device) if 'gt_rgb' in ray_batch else None
         # note: nsvf's sampling require normalized rays_d

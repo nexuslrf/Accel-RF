@@ -116,7 +116,7 @@ class VoxelGrid(Explicit3D):
         self.occupancy = self.occupancy[...,None].repeat_interleave(n_subvox, -1).reshape(-1)
         self.max_ray_hit = self.get_max_ray_hit()
         if self.use_corner:
-            center_coords = (2*old_center_coords[...,None,:] + offset).reshape(-1, 3) # [8N, 3]
+            center_coords = (2*old_center_coords[...,None,:] + offset).reshape(-1, 3) # [8N, 3] # x2
             # <==> discretize_points(self.center_points, self.voxel_size) # [8N ,3]
             corner_coords = (center_coords[...,None,:] + offset).reshape(-1, 3) # [64N, 3]
             unique_corners, center2corner = torch.unique(corner_coords, dim=0, sorted=True, return_inverse=True)
@@ -128,7 +128,7 @@ class VoxelGrid(Explicit3D):
                     0, center2corner, torch.arange(corner_coords.shape[0], device=feats.device) // n_subvox**2)
                 feats_idx = old_ct2cn[cn2oldct] # [N_cn, 8]
                 _feats = feats[feats_idx] # [N_cn, 8, D_f]
-                new_feats = trilinear_interp(unique_corners-0.5, old_center_coords[cn2oldct], _feats, 1., offset)
+                new_feats = trilinear_interp(unique_corners-1, 2*old_center_coords[cn2oldct], _feats, 2., offset)
                 return new_feats
 
     def get_max_ray_hit(self):
@@ -138,6 +138,11 @@ class VoxelGrid(Explicit3D):
         aabb_box = ((max_voxel - min_voxel) / self.voxel_size).round().long() + 1
         max_ray_hit = min(aabb_box.sum(), self.n_voxels)
         return max_ray_hit
+    
+    def load_adjustment(self, n_voxels, grid_shape):
+        self.center_points = self.center_points.new_empty(n_voxels, 3)
+        self.center2corner = self.center2corner.new_empty(n_voxels, 8)
+        self.occupancy = self.occupancy.new_empty(torch.tensor(grid_shape).prod())
 
     def get_edge(self):
         NotImplemented

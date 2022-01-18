@@ -33,6 +33,7 @@ class TestVoxelGrid(unittest.TestCase):
         vox_pt = utils.bbox2voxels(self.bbox_pt, 0.4)
         logging.info(vox_pt.shape)
     
+    @unittest.SkipTest
     def test_voxel_grid_class(self):
         vox_grid = VoxelGrid(self.bbox_pt, 0.4).to('cuda')
         logging.info(vox_grid.grid_shape)
@@ -88,15 +89,23 @@ class TestVoxelGrid(unittest.TestCase):
 
     def test_splitting(self):
         logging.info('Test splitting')
-        vox_grid = VoxelGrid(self.bbox_pt, 0.4).to('cuda')
+        bbox_pt = torch.tensor([0,0,0, 1.6, 2.4, 2.0])
+        vox_grid = VoxelGrid(bbox_pt, 0.4).to('cuda')
         logging.info(vox_grid.grid_shape)
         logging.info(vox_grid.center2corner.shape)
         logging.info(f'{vox_grid.center2corner[0]}, {vox_grid.center2corner[1]}')
-        vox_grid.splitting()
+        corner_coords = torch.stack(torch.meshgrid([torch.arange(s) for s in vox_grid.grid_shape+1]), -1)
+        corner_feats = (corner_coords * 0.4 - 0.2).reshape(-1, 3).cuda()
+        offset = utils.offset_points(scale=-1, device='cuda')
+        logging.info(f'corner_feats: {corner_feats.shape}')
+        new_corner_feats = vox_grid.splitting(corner_feats)
+        offset_ = ((new_corner_feats[vox_grid.center2corner] - vox_grid.center_points[:,None,:]) / 0.1).mean(0)
+        self.assertTrue((offset-offset_).norm() < 1e-5)
         logging.info(vox_grid.grid_shape)
         logging.info(vox_grid.center2corner.shape)
         logging.info(f'{vox_grid.center2corner[0]}, {vox_grid.center2corner[1]}')
 
+    @unittest.SkipTest
     def test_pruning(self):
         logging.info('Test pruning')
         vox_grid = VoxelGrid(self.bbox_pt, 0.4).to('cuda')

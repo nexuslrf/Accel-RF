@@ -7,7 +7,7 @@ dataset_type = blender
 no_batching = True
 
 N_iters = 150000
-N_rand = 8192
+N_rand = 4096
 N_views = 4
 full_rays = True
 
@@ -21,7 +21,7 @@ pruning_every_steps = 2500
 splitting_steps = [5000,25000,75000]
 half_stepsize_steps = [5000,25000,75000]
 
-white_bkgd = True
+white_bkgd = False
 half_res = True
 lrate_decay = 500
 
@@ -29,3 +29,7 @@ pruning_thres = 0.5
 loss_w_rgb = 128
 loss_w_alpha = 1
 loss_w_reg = 0
+
+early_stop_thres = 0.01
+bg_field = True
+min_color = 0

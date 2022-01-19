@@ -113,7 +113,7 @@ class NSVFRender(nn.Module):
                             with torch.no_grad():
                                 accum_log_T = accum_log_T + out['free_energy'].sum(1)
                                 mask_early_stop = accum_log_T > self.early_stop_thres
-                                mask_pts[mask_early_stop] = 0
+                                mask_pts = mask_pts * mask_early_stop
                     else:
                         n_pts_fwd += n_pts_step
                         

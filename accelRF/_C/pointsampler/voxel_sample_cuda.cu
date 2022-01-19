@@ -198,12 +198,12 @@ void voxel_uniform_sample_kernel_wrapper(
 
 void voxel_cdf_sample_kernel_wrapper(
     int b, int rays_per_blk, int n_rays, int max_hits, int max_steps, float fixed_step_size,
-    const int *pts_idx, const float *min_depth, const float *max_depth,
+    at::DeviceIndex device_idx, const int *pts_idx, const float *min_depth, const float *max_depth,
     const float *uniform_noise, const float *probs, const int *steps,
     int *sampled_idx, float *sampled_depth, float *sampled_dists) {
     
-    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    voxel_cdf_sample_kernel<<<b, opt_n_threads(rays_per_blk), 0, stream>>>(
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream(device_idx);
+    voxel_cdf_sample_kernel<<<b, rays_per_blk, 0, stream>>>(
         b, rays_per_blk, n_rays, max_hits, max_steps, fixed_step_size,
         pts_idx, min_depth, max_depth, uniform_noise, probs, steps, 
         sampled_idx, sampled_depth, sampled_dists);

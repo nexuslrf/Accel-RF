@@ -1,7 +1,7 @@
 #include "ray_intersect.h"
 #include "utils.h"
 #include <utility>
-#include <torch/script.h>
+// #include <torch/script.h>
 
 void aabb_intersect_old_kernel_wrapper(
   int b, int n, int m, float voxelsize, int n_max,
@@ -10,7 +10,7 @@ void aabb_intersect_old_kernel_wrapper(
 
 void aabb_intersect_kernel_wrapper(
   int n_blk, int rays_per_blk, int n_pts, int n_rays, int max_hit, float radius,
-  const float *rays_o, const float *rays_d, const float *points,
+  at::DeviceIndex device_idx, const float *rays_o, const float *rays_d, const float *points,
   int *idx, float *min_depth, float *max_depth);
 
 std::tuple< at::Tensor, at::Tensor, at::Tensor > aabb_intersect_old(at::Tensor rays_o, at::Tensor rays_d, at::Tensor points, 
@@ -69,8 +69,8 @@ std::tuple< at::Tensor, at::Tensor, at::Tensor > aabb_intersect(at::Tensor rays_
 
   int n_pts = points.numel() / 3;
   int n_rays = rays_o.size(0);
-  int n_blocks = std::min(2048, (int)(2e9 / points.numel()));
-  int rays_per_blk = (n_rays - 1) / n_blocks + 1;
+  int rays_per_blk = 256;
+  int n_blocks = (n_rays - 1) / rays_per_blk + 1;
   float half_voxel = voxelsize * 0.5; 
   at::Tensor idx =
       torch::zeros({n_rays, max_hit}, at::device(rays_o.device()).dtype(at::ScalarType::Int));
@@ -78,7 +78,8 @@ std::tuple< at::Tensor, at::Tensor, at::Tensor > aabb_intersect(at::Tensor rays_
       torch::zeros({n_rays, max_hit}, at::device(rays_o.device()).dtype(at::ScalarType::Float));
   at::Tensor max_depth =
       torch::zeros({n_rays, max_hit}, at::device(rays_o.device()).dtype(at::ScalarType::Float));
-  aabb_intersect_kernel_wrapper(n_blocks, rays_per_blk, n_pts, n_rays, max_hit, half_voxel,
+  at::DeviceIndex device_idx = rays_o.device().index();
+  aabb_intersect_kernel_wrapper(n_blocks, rays_per_blk, n_pts, n_rays, max_hit, half_voxel, device_idx,
                                   rays_o.data_ptr <float>(), rays_d.data_ptr <float>(), points.data_ptr <float>(),
                                   idx.data_ptr <int>(), min_depth.data_ptr <float>(), max_depth.data_ptr <float>());
   return std::make_tuple(idx, min_depth, max_depth);

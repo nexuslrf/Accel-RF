@@ -10,7 +10,7 @@ void voxel_uniform_sample_kernel_wrapper(
 
 void voxel_cdf_sample_kernel_wrapper(
   int b, int rays_per_blk, int n_rays, int max_hits, int max_steps, float fixed_step_size,
-  const int *pts_idx, const float *min_depth, const float *max_depth,
+  at::DeviceIndex device_idx, const int *pts_idx, const float *min_depth, const float *max_depth,
   const float *uniform_noise, const float *probs, const int *steps,
   int *sampled_idx, float *sampled_depth, float *sampled_dists);
 
@@ -75,7 +75,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> voxel_cdf_sample(
 
   int max_steps = uniform_noise.size(-1), max_hits = min_depth.size(-1);
   int n_rays = pts_idx.size(0);
-  int rays_per_blk = 128;
+  int rays_per_blk = 256;
   int n_blocks = (n_rays - 1) / rays_per_blk + 1;
   at::Tensor sampled_idx =
       -torch::ones({n_rays, max_steps}, at::device(pts_idx.device()).dtype(at::ScalarType::Int));
@@ -83,7 +83,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> voxel_cdf_sample(
       torch::zeros({n_rays, max_steps}, at::device(min_depth.device()).dtype(at::ScalarType::Float));
   at::Tensor sampled_dists =
       torch::zeros({n_rays, max_steps}, at::device(min_depth.device()).dtype(at::ScalarType::Float));
-  voxel_cdf_sample_kernel_wrapper(n_blocks, rays_per_blk, n_rays, max_hits, max_steps, fixed_step_size,
+  auto device_idx = pts_idx.device().index();
+  voxel_cdf_sample_kernel_wrapper(n_blocks, rays_per_blk, n_rays, max_hits, max_steps, fixed_step_size, device_idx,
                                       pts_idx.data_ptr <int>(), min_depth.data_ptr <float>(), max_depth.data_ptr <float>(),
                                       uniform_noise.data_ptr <float>(), probs.data_ptr <float>(), steps.data_ptr <int>(),
                                       sampled_idx.data_ptr <int>(), sampled_depth.data_ptr <float>(), sampled_dists.data_ptr <float>());

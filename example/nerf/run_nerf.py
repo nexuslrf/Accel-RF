@@ -28,8 +28,9 @@ cudnn.benchmark = True
 savedir = os.path.join(args.basedir, args.expname)
 
 if args.local_rank >= 0:
-    dist.init_process_group(backend='nccl', init_method="env://")
+    torch.cuda.set_device(args.local_rank)
     device = f'cuda:{args.local_rank}'
+    dist.init_process_group(backend='nccl', init_method="env://")
     n_replica = n_gpus
 
 if args.local_rank <= 0:

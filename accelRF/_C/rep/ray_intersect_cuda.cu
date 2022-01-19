@@ -149,11 +149,11 @@ __global__ void aabb_intersect_kernel(
 
 void aabb_intersect_kernel_wrapper(
   int n_blk, int rays_per_blk, int n_pts, int n_rays, int max_hit, float radius,
-  const float *rays_o, const float *rays_d, const float *points,
+  at::DeviceIndex device_idx, const float *rays_o, const float *rays_d, const float *points,
   int *idx, float *min_depth, float *max_depth) {
   
-  cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-  aabb_intersect_kernel<<<n_blk, opt_n_threads(rays_per_blk), 0, stream>>>(
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream(device_idx);
+  aabb_intersect_kernel<<<n_blk, rays_per_blk, 0, stream>>>(
     rays_per_blk, n_pts, n_rays, max_hit, radius, 
     rays_o, rays_d, points, idx, min_depth, max_depth);
   

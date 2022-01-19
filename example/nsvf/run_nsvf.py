@@ -33,8 +33,9 @@ cudnn.benchmark = True
 savedir = os.path.join(args.basedir, args.expname)
 
 if args.local_rank >= 0:
-    dist.init_process_group(backend='nccl', init_method="env://")
+    torch.cuda.set_device(args.local_rank)
     device = f'cuda:{args.local_rank}'
+    dist.init_process_group(backend='nccl', init_method="env://")
     n_replica = n_gpus
 
 if args.local_rank <= 0:
@@ -54,7 +55,7 @@ to8b = lambda x : (255*np.clip(x,0,1)).astype(np.uint8)
 def main():
     # prepare data
     if args.dataset_type == 'blender':
-        dataset = dataset = Blender(args.datadir, args.scene, args.half_res, 
+        dataset = Blender(args.datadir, args.scene, args.half_res, 
                                 args.testskip, args.white_bkgd, with_bbox=True)
     else:
         print(f'{args.dataset_type} has not been supported yet...')
@@ -117,7 +118,7 @@ def main():
     # prepare dataloader
     train_base_raysampler = \
         PerViewRaySampler(dataset.get_sub_set('train'), args.N_rand, args.N_iters, args.N_views, 
-            precrop=False, full_rays=args.full_rays, start_epoch=start, rank=args.local_rank, n_replica=n_replica)
+            precrop=False, full_rays=args.full_rays, start_epoch=start,) # rank=args.local_rank, n_replica=n_replica)
     train_vox_raysampler = VoxIntersectRaySampler(args.N_rand, train_base_raysampler, vox_grid, device=device)
     test_raysampler = VoxIntersectRaySampler(0, RenderingRaySampler(dataset.get_sub_set('test')), 
                             vox_grid, mask_sample=False, device=device, num_workers=1)

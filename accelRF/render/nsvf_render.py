@@ -43,6 +43,7 @@ class NSVFRender(nn.Module):
         bg_color: Optional[nn.Module]=None,
         white_bkgd: bool=False,
         min_color: int=-1, # note gt_rbg is [0,1] by default. the final out rgb always [0,1] scale
+        discrete_reg: bool=False,
         fwd_steps: int=4,
         chunk: int=1024*64
     ):
@@ -64,6 +65,7 @@ class NSVFRender(nn.Module):
         self.bg_color = bg_color
         self.white_bkgd = (white_bkgd and bg_color is None)
         self.min_color = min_color
+        self.discrete_reg = discrete_reg
 
 
     def forward(self, rays_o: Tensor, rays_d: Tensor, vox_idx: Tensor, 
@@ -158,6 +160,8 @@ class NSVFRender(nn.Module):
         out = {'rgb': masked_scatter(mask_pts, nn_out['rgb'])}
         if dists is not None:
             dists = dists[mask_pts]
+            noise = 0 if (not self.discrete_reg) and (not self.training) \
+                    else torch.zeros_like(nn_out['sigma']).normal_()  
             free_energy = F.relu(nn_out['sigma']) * dists[...,None] # activation is here!
             out['free_energy'] = masked_scatter(mask_pts, free_energy)
         else:

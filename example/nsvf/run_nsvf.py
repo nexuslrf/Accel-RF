@@ -147,7 +147,10 @@ def main():
 
         if i%args.i_print==0:
             psnr = mse2psnr(sub_losses['rgb'])
-            tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()} RGB: {sub_losses['rgb'].item()} Alpha: {sub_losses['alpha'].item()} W_norm: {nsvf_render.voxel_embedder.get_weight().norm().item()}")
+            tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()} " + \
+                    # f"Alpha: {sub_losses['alpha'].item()} " + \
+                    f"Hit ratio: {hits.sum().item()/hits.shape[0]} " + \
+                    f"Bg ratio: {(gt_rgb.sum(-1).eq(0)).sum().item()/hits.shape[0]}")
             if args.local_rank <= 0:
                 tb_writer.add_scalar('loss', loss, i)
                 tb_writer.add_scalar('psnr', psnr, i)

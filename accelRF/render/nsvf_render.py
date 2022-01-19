@@ -16,13 +16,13 @@ def masked_scatter(mask: torch.BoolTensor, x: Tensor):
         mask.unsqueeze(-1).expand(*mask_shape, x.size(-1)), x)
 
 def fill_in(shape, hits: Tensor, input: Tensor, initial=0.):
-    if torch.Size(shape) == input.shape:
+    if input is not None and torch.Size(shape) == input.shape:
         return input   # shape is the same no need to fill
 
     if isinstance(initial, torch.Tensor):
         output = initial.expand(*shape)
     else:
-        output = input.new_ones(*shape) * initial
+        output = torch.ones(*shape, device=hits.device) * initial
     if input is not None:
         if len(shape) == 1:
             output = output.masked_scatter(hits, input)

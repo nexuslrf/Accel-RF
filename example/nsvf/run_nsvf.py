@@ -1,7 +1,5 @@
 import os
 import sys
-from distutils.log import debug
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import imageio
@@ -28,7 +26,6 @@ from opts import config_parser
 
 parser = config_parser()
 args = parser.parse_args()
-args.expname = 'debug_nsvf'
 n_gpus = torch.cuda.device_count()
 n_replica = 1
 device = 'cuda'
@@ -75,8 +72,7 @@ def main():
             D_feat=args.D_feat, W_feat=args.W_feat, D_sigma=args.D_sigma, W_sigma=args.W_sigma, 
             layernorm=(not args.no_layernorm), with_reg_term=(args.loss_w_reg!=0)),
         vox_rep=vox_grid,
-        bg_color=BackgroundField(bg_color=1. if args.white_bkgd else args.min_color, trainable=False) \
-                if args.bg_field else None,
+        bg_color=BackgroundField(bg_color=1. if args.white_bkgd else 0., trainable=False) if args.bg_field else None,
         white_bkgd=args.white_bkgd,
         min_color=args.min_color,
         early_stop_thres=args.early_stop_thres,
@@ -151,7 +147,7 @@ def main():
 
         if i%args.i_print==0:
             psnr = mse2psnr(sub_losses['rgb'])
-            tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()}")
+            tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()} RGB: {sub_losses['rgb'].item()} Alpha: {sub_losses['alpha'].item()} W_norm: {nsvf_render.voxel_embedder.get_weight().norm().item()}")
             if args.local_rank <= 0:
                 tb_writer.add_scalar('loss', loss, i)
                 tb_writer.add_scalar('psnr', psnr, i)

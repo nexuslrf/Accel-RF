@@ -2,12 +2,11 @@ from typing import Optional
 import torch
 import torch.nn as nn
 from torch import Tensor
-from .utils import sample_pdf
 
-def get_init_z_vals(
+def get_z_vals(
     near: float, far: float, N_samples: int, 
     lindisp: bool=False, device: torch.device='cpu'):
-    t_vals = torch.linspace(0., 1., steps=N_samples, device=device)
+    t_vals = torch.linspace(0., 1., steps=N_samples, device=device)[None,:]
     if not lindisp:
         init_z_vals = near * (1.-t_vals) + far * (t_vals)
     else:
@@ -17,11 +16,12 @@ def get_init_z_vals(
 @torch.jit.script
 def uniform_sample(
     N_samples: int,
-    near: float, far: float,
     rays_o: Tensor, rays_d: Tensor,
+    near: float=0., far: float=1.,
     perturb: float=0.,
     lindisp: bool=False,
-    init_z_vals: Optional[Tensor]=None,
+    init_z_vals: Optional[Tensor]=None, # [1, N_samples]
+    only_z_vals: bool=False,
     ):
     '''
     Args:
@@ -36,7 +36,7 @@ def uniform_sample(
     device = rays_o.device
     N_rays = rays_o.shape[0]
     if init_z_vals is None:
-        init_z_vals = get_init_z_vals(near, far, N_samples, lindisp, device) # (N_samples)
+        init_z_vals = get_z_vals(near, far, N_samples, lindisp, device) # (1, N_samples)
 
     if perturb > 0.:
         # get intervals between samples
@@ -47,8 +47,10 @@ def uniform_sample(
         t_rand = torch.rand([N_rays, N_samples], device=device) * perturb
         z_vals = lower + (upper - lower) * t_rand # [N_rays, N_samples]
     else:
-        z_vals = init_z_vals[None, :] # [1, N_samples]
+        z_vals = init_z_vals # [1, N_samples]
     
+    if only_z_vals:
+        return None, z_vals
     pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,None] # [N_rays, N_samples, 3]
 
     # TODO maybe u can consider adding bounding box checking here for bounded scenes.
@@ -131,7 +133,7 @@ class NeRFPointSampler(nn.Module):
         self.perturb = perturb
         self.det = (perturb==0.)
         self.lindisp = lindisp
-        init_z_vals = get_init_z_vals(near, far, N_samples, lindisp)
+        init_z_vals = get_z_vals(near, far, N_samples, lindisp)
         self.register_buffer('init_z_vals', init_z_vals, False) # no need to checkpoint
         
     @torch.no_grad()
@@ -139,8 +141,8 @@ class NeRFPointSampler(nn.Module):
             z_vals: Optional[Tensor]=None, weights: Optional[Tensor]=None):
 
         if weights is None:
-            pts, z_vals = uniform_sample(self.N_samples, self.near, self.far, 
-                            rays_o, rays_d, self.perturb, init_z_vals=self.init_z_vals)
+            pts, z_vals = uniform_sample(self.N_samples, rays_o, rays_d, 
+                            self.near, self.far, self.perturb, init_z_vals=self.init_z_vals)
         else:
             pts, z_vals = cdf_sample(self.N_importance, 
                             rays_o, rays_d, z_vals, weights, det=self.det)

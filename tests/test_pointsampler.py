@@ -10,7 +10,7 @@ import torch.nn as nn
 import accelRF.pointsampler as aps
 from accelRF.rep.voxel_grid import VoxelGrid
 
-@unittest.SkipTest
+
 class TestNeRFPointSampler(unittest.TestCase):
     def __init__(self, methodName: str = ...) -> None:
         super().__init__(methodName=methodName)
@@ -25,31 +25,41 @@ class TestNeRFPointSampler(unittest.TestCase):
     def test_uniform_sample_with_init_z(self):
         # CPU version
         init_z_vals = torch.linspace(0, 1, steps=self.N_samples)
-        pts, _ = aps.uniform_sample(self.N_samples, 1., 6., self.rays_o, self.rays_d, init_z_vals=init_z_vals)
+        pts, _ = aps.uniform_sample(self.N_samples, self.rays_o, self.rays_d, 1., 6., init_z_vals=init_z_vals)
         self.assertEqual(pts.shape, self.tar_shape)
 
     @unittest.SkipTest
     def test_uniform_sample_without_init_z(self):
         # CPU version
-        pts, _ = aps.uniform_sample(self.N_samples, 1., 6., self.rays_o, self.rays_d)
+        pts, _ = aps.uniform_sample(self.N_samples, self.rays_o, self.rays_d, 1., 6.)
         self.assertEqual(pts.shape, self.tar_shape)
 
     @unittest.SkipTest
     def test_uniform_sample_with_init_z_cuda(self):
         # GPU version
         init_z_vals = torch.linspace(0, 1, steps=self.N_samples).cuda()
-        pts, _ = aps.uniform_sample(self.N_samples, 1., 6., self.rays_o.cuda(), self.rays_d.cuda(), init_z_vals=init_z_vals)
+        pts, _ = aps.uniform_sample(self.N_samples, self.rays_o.cuda(), self.rays_d.cuda(), 1., 6., init_z_vals=init_z_vals)
         self.assertEqual(pts.shape, self.tar_shape)
 
-    @unittest.SkipTest
+    # @unittest.SkipTest
     def test_uniform_sample_without_init_z_cuda(self):
         # GPU version
-        pts, _ = aps.uniform_sample(self.N_samples, 1., 6., self.rays_o.cuda(), self.rays_d.cuda())
+        pts, _ = aps.uniform_sample(self.N_samples, self.rays_o.cuda(), self.rays_d.cuda(), 1., 6.)
         self.assertEqual(pts.shape, self.tar_shape)
+    
+    # @unittest.SkipTest
+    def test_uniform_sample_z_only_cuda(self):
+        # GPU version
+        pts, z_vals = aps.uniform_sample(self.N_samples, self.rays_o.cuda(), self.rays_d.cuda(), 1., 6., only_z_vals=True)
+        logging.info(z_vals.shape)
+        init_z_vals =aps.get_z_vals(0, torch.ones(10,1), 20)
+        logging.info(init_z_vals.shape)
+        # pts, z_vals = aps.uniform_sample(
+        #     self.N_samples, 1., torch.ones(self.N_rays,1).cuda(), self.rays_o.cuda(), self.rays_d.cuda())
 
     @unittest.SkipTest
     def test_uniform_sample_with_perturb(self):
-        pts, _ = aps.uniform_sample(self.N_samples, 1., 6., self.rays_o, self.rays_d, perturb=1.)
+        pts, _ = aps.uniform_sample(self.N_samples, self.rays_o, self.rays_d, 1., 6., perturb=1.)
         self.assertEqual(pts.shape, self.tar_shape)
 
     @unittest.SkipTest
@@ -87,6 +97,7 @@ class TestNeRFPointSampler(unittest.TestCase):
         self.assertEqual(pts.shape, torch.Size([self.N_rays, self.N_samples+self.N_importance, 3]))
         # logging.info(aps.cdf_sample.graph)
     
+    @unittest.SkipTest
     def test_wrapper(self):
         device = 'cuda'
         sampler = aps.NeRFPointSampler(self.N_samples, 1., 6., self.N_importance)#.to(device)
@@ -99,7 +110,8 @@ class TestNeRFPointSampler(unittest.TestCase):
         ret = sampler(self.rays_o.to(device), self.rays_d.to(device), z_vals, weights)
         pts_fine, _ = ret
         self.assertEqual(pts_fine.shape, torch.Size([self.N_rays, self.N_samples+self.N_importance, 3]))
-    
+
+@unittest.SkipTest
 class TestNSVFPointSampler(unittest.TestCase):
     def __init__(self, methodName: str = ...) -> None:
         super().__init__(methodName=methodName)

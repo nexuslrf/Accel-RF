@@ -13,7 +13,7 @@
 
 The whole NeRF training workflow can be decomposed into major 5 modules/steps.
 
-<img src="https://bl3301files.storage.live.com/y4mN7eU2PVVVde5wP6Xn5TyEBXmzrUoJfD17CgiNFlc9hc5Ft_KzurWWkDM_DgvB7S7r-AXabyXbLq7mczXN25MQObCN4ItSuWce4qclRfPMwTa3HkPsUt3QGjYW4pM0aEw9eFN0DLIdwnIsIEf0WUxooyf-I9QcpwrkXNMUwQ6sLq8JN3cRoBs3aDQJX_BUWzT?width=3854&height=609&cropmode=none"/>
+<img src="https://bl3301files.storage.live.com/y4m_heZ4ahhH9_qTzlk2QJkWemhV3RqQoufrAhalXfsgqDiymrANqBPijViY8VXkFC70yld6OdaXOPYcSnpPAmeTn_v2O02PNS-MkvAiqTXe1odbhLDuJHajKfWm2wKBKnPLLiab-OXJtK8UciCpA3A18HUp3dbfMb4eGZkaGVPeOCi2cdUyR0eYSGWhaeC2-X_?width=3854&height=847&cropmode=none"/>
 
 **Datasets**
 

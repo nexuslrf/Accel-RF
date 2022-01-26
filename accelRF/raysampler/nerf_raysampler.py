@@ -11,6 +11,7 @@ class BatchingRaySampler(BaseRaySampler):
         dataset, 
         N_rand: int=2048,
         length: int=1000,
+        normalize_dir: bool=False,
         device: torch.device='cpu',
         start_epoch: int=0,
         rank: int=-1,
@@ -19,15 +20,14 @@ class BatchingRaySampler(BaseRaySampler):
         ) -> None:
         
         super().__init__(
-            dataset, N_rand, length-start_epoch, device, rank, n_replica, seed)
+            dataset, N_rand, length-start_epoch, normalize_dir, device, rank, n_replica, seed)
         #
         H, W, focal = self.dataset.get_hwf()
-
         # For random ray batching
         print('get rays')
         rays_o, rays_d = [], []
         for p in self.dataset.poses[:,:3,:4]:
-            ray_o, ray_d = get_rays(H, W, focal, p)
+            ray_o, ray_d = get_rays(H, W, focal, p, normalize_dir=normalize_dir)
             rays_o.append(ray_o); rays_d.append(ray_d)
         rays_o = torch.stack(rays_o, 0); rays_d = torch.stack(rays_d, 0) # [N, H, W, 3]
         print('done, concats')
@@ -71,6 +71,7 @@ class PerViewRaySampler(BaseRaySampler):
         precrop_frac: float=0.5,
         precrop_iters: int=500,
         full_rays: bool=False,
+        normalize_dir: bool=False,
         device: torch.device='cpu',
         start_epoch: int=0,
         rank: int=-1,
@@ -79,7 +80,7 @@ class PerViewRaySampler(BaseRaySampler):
         ) -> None:
         
         super().__init__(
-            dataset, N_rand, length-start_epoch, device, rank, n_replica, seed)
+            dataset, N_rand, length-start_epoch, normalize_dir, device, rank, n_replica, seed)
         self.N_views = N_views
         self.precrop = precrop
         self.precrop_frac = precrop_frac
@@ -135,7 +136,7 @@ class PerViewRaySampler(BaseRaySampler):
             pose = img_dict['pose'][:3,:4]
             cam_viewdir = img_dict['pose'][:3,2]
             target = img_dict['gt_img'] # if 'gt_img' in img_dict else None
-            rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose) # TODO optimize it
+            rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose, normalize_dir=self.normalize_dir) # TODO optimize it
             if not self.full_rays:
                 # To avoid manually setting numpy random seed for ender user when num_workers > 1, 
                 # replace np.random.choice with torch.randperm
@@ -176,6 +177,7 @@ class NeRFRaySampler(data.Dataset):
         precrop: bool=False,
         precrop_frac: float=0.5,
         precrop_iters: int=500,
+        normalize_dir: bool=False,
         device: torch.device='cpu',
         start_epoch: int=0,
         rank: int=-1,
@@ -185,23 +187,25 @@ class NeRFRaySampler(data.Dataset):
         
         super().__init__()
         self.dataset = dataset # just in case.
+        
         if full_rendering: 
             assert use_batching==False and precrop==False
             self.length = len(self.dataset)
             self.raysampler = RenderingRaySampler(
-                dataset, N_rand, device, rank, n_replica, seed
+                dataset, N_rand, False, device, rank, n_replica, seed
             )
 
         elif use_batching:
             # For random ray batching
             self.raysampler = BatchingRaySampler(
-                dataset, N_rand, length, device, start_epoch, rank, n_replica, seed
+                dataset, N_rand, length, normalize_dir, device, start_epoch, rank, n_replica, seed
             )
         else:
             N_views = 1
+            full_rays = False
             self.raysampler = PerViewRaySampler(
-                dataset, N_rand, length, N_views, precrop, precrop_frac, precrop_iters, 
-                device, start_epoch, rank, n_replica, seed
+                dataset, N_rand, length, N_views, precrop, precrop_frac, precrop_iters, full_rays, 
+                normalize_dir, device, start_epoch, rank, n_replica, seed
             )
 
     def __len__(self):

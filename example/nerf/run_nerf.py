@@ -50,8 +50,8 @@ def main():
     # create model
     input_ch, input_ch_views = (2*args.multires+1)*3, (2*args.multires_views+1)*3
     nerf_render = NeRFRender(
-        embedder_pts=PositionalEncoding(N_freqs=args.multires) if args.multires==0 else None,
-        embedder_views=PositionalEncoding(N_freqs=args.multires_views) if args.multires_views==0 else None,
+        embedder_pts=PositionalEncoding(N_freqs=args.multires) if args.multires>0 else None,
+        embedder_views=PositionalEncoding(N_freqs=args.multires_views) if args.multires_views>0 else None,
         point_sampler=NeRFPointSampler(
             N_samples=args.N_samples, N_importance=args.N_importance, 
             near=dataset.near, far=dataset.far, perturb=args.perturb, lindisp=args.lindisp),

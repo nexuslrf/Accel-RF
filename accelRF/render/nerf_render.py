@@ -11,7 +11,8 @@ from accelRF.raysampler.utils import ndc_rays
 def volumetric_rendering(
     rgb: Optional[Tensor], sigma: Tensor, 
     z_vals: Tensor, dir_lens: Optional[Tensor]=None, 
-    white_bkgd: bool=False, with_dist: bool=False) -> Dict[str, Tensor]:
+    white_bkgd: bool=False, with_dist: bool=False,
+    rgb_only: bool=False, with_T: bool=False) -> Dict[str, Tensor]:
     """Volumetric Rendering Function.
 
     Args:
@@ -33,21 +34,18 @@ def volumetric_rendering(
         )
     """
     eps = 1e-10
+    ret = {}
     if not with_dist:
         dists = torch.cat([
             z_vals[..., 1:] - z_vals[..., :-1],
             1e10 * torch.ones_like(z_vals[..., :1])
         ], -1) # [N_rays, N_samples]
-
         # Multiply each distance by the norm of its corresponding direction ray
         # to convert to real world distance (accounts for non-unit directions).
-
-        # dists = dists * torch.norm(dirs[..., None, :], dim=-1)
         if dir_lens is not None:
             dists = dists * dir_lens
         # Note that we're quietly turning sigma from [..., 0] to [...].
         free_energy = sigma[..., 0] * dists
-
     else:
         free_energy = sigma[..., 0]
         
@@ -55,25 +53,31 @@ def volumetric_rendering(
     # noise = torch.randn_like(sigma) * noise_std
     
     alpha = 1.0 - torch.exp(-free_energy)
-    accum_prod = torch.cat([
-        torch.ones_like(alpha[..., :1]),
-        torch.cumprod(1.0 - alpha[..., :-1] + eps, -1)
+    transmittance = torch.cat([
+        torch.ones_like(alpha[..., :1]), # add 0 for transperancy 1 at t_0
+        torch.cumprod(1.0 - alpha + eps, -1)
     ], -1)
-    weights = alpha * accum_prod
+    weights = alpha * transmittance[..., :-1]
+    ret['weights'] = weights
+    if with_T: 
+        ret['transmittance'] = transmittance
     if rgb is None:
-        return {'weights': weights}
+        return ret
     else:
         comp_rgb = (weights[..., None] * rgb).sum(-2)
-        depth = (weights * z_vals).sum(-1)
         acc = weights.sum(-1)
-        # Equivalent to (but slightly more efficient and stable than):
-        #  disp = 1 / max(eps, where(acc > eps, depth / acc, 0))
-        inv_eps = torch.tensor(1 / eps, dtype=depth.dtype, device=depth.device)
-        disp = acc / depth
-        disp = torch.where((disp > 0) & (disp < inv_eps) & (acc > eps), disp, inv_eps)
         if white_bkgd:
             comp_rgb = comp_rgb + (1. - acc[..., None])
-    return {'rgb':comp_rgb, 'disp':disp, 'acc':acc, 'weights':weights}
+        ret['rgb'] = comp_rgb
+        if not rgb_only:
+            depth = (weights * z_vals).sum(-1)
+            # Equivalent to (but slightly more efficient and stable than):
+            #  disp = 1 / max(eps, where(acc > eps, depth / acc, 0))
+            inv_eps = torch.tensor(1 / eps, dtype=depth.dtype, device=depth.device)
+            disp = acc / depth
+            disp = torch.where((disp > 0) & (disp < inv_eps) & (acc > eps), disp, inv_eps)
+            ret['disp'], ret['acc'] = disp, acc
+        return ret
 
 
 class NeRFRender(nn.Module):

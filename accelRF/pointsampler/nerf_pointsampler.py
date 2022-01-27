@@ -16,12 +16,12 @@ def get_z_vals(
 @torch.jit.script
 def uniform_sample(
     N_samples: int,
-    rays_o: Tensor, rays_d: Tensor,
+    N_rays: int=1,
     near: float=0., far: float=1.,
     perturb: float=0.,
     lindisp: bool=False,
     init_z_vals: Optional[Tensor]=None, # [1, N_samples]
-    only_z_vals: bool=False,
+    device: torch.device='cuda'
     ):
     '''
     Args:
@@ -33,38 +33,30 @@ def uniform_sample(
         pts: Tensor, sampled points. [N_rays, N_samples, 3]
         z_vals: Tensor, [N_rays, N_samples] or [1, N_samples]
     '''
-    device = rays_o.device
-    N_rays = rays_o.shape[0]
     if init_z_vals is None:
         init_z_vals = get_z_vals(near, far, N_samples, lindisp, device) # (1, N_samples)
 
     if perturb > 0.:
         # get intervals between samples
-        mids = .5 * (init_z_vals[1:] + init_z_vals[:-1])
-        upper = torch.cat([mids, init_z_vals[-1:]], -1)
-        lower = torch.cat([init_z_vals[:1], mids], -1)
+        mids = .5 * (init_z_vals[..., 1:] + init_z_vals[..., :-1])
+        upper = torch.cat([mids, init_z_vals[..., -1:]], -1)
+        lower = torch.cat([init_z_vals[..., :1], mids], -1)
         # stratified samples in those intervals
         t_rand = torch.rand([N_rays, N_samples], device=device) * perturb
         z_vals = lower + (upper - lower) * t_rand # [N_rays, N_samples]
     else:
         z_vals = init_z_vals # [1, N_samples]
     
-    if only_z_vals:
-        return None, z_vals
-    pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,None] # [N_rays, N_samples, 3]
-
-    # TODO maybe u can consider adding bounding box checking here for bounded scenes.
-
-    return pts, z_vals
+    return z_vals
 
 
 @torch.jit.script
 # @torch.no_grad()
 def cdf_sample(
     N_samples: int,
-    rays_o: Tensor, rays_d: Tensor,
     z_vals: Tensor, weights: Tensor,
-    det: bool=True
+    det: bool=True, mid_bins: bool=True,
+    eps: float=1e-5, include_init_z_vals: bool=True
     ):
     '''
     cdf_sample relies on (i) coarse_sample's results (ii) output of coarse MLP
@@ -77,16 +69,17 @@ def cdf_sample(
         z_vals: Tensor, samples positional parameter in coarse sample. [N_rays|1, N_samples]
         weights: Tensor, processed weights from MLP and vol rendering. [N_rays, N_samples]
     '''
+    device = weights.device
     N_rays = weights.shape[0]
     N_base_samples = z_vals.shape[1]
-    z_vals_mid = .5 * (z_vals[...,1:] + z_vals[...,:-1]) 
-
-    # z_samples = sample_pdf(z_vals_mid, weights[...,1:-1], N_samples, det=det)
-    # unfold `sample_pdf` for more fusion opportunities..
+    if mid_bins:
+        bins = .5 * (z_vals[...,1:] + z_vals[...,:-1]) 
+        weights_ = weights[..., 1:-1] + eps # prevent nans
+    else:
+        bins = z_vals
+        weights_ = weights[..., :-1] + eps # prevent nans
     
     # Get pdf & cdf
-    device = weights.device
-    weights_ = weights[..., 1:-1] + 1e-5 # prevent nans
     pdf = weights_ / torch.sum(weights_, -1, keepdim=True)
     cdf = torch.cumsum(pdf, -1)
     cdf = torch.cat([torch.zeros_like(cdf[...,:1]), cdf], -1)  # (batch, len(bins))
@@ -105,21 +98,20 @@ def cdf_sample(
     above = inds.clamp_max(cdf.shape[-1]-1)
     inds_g = torch.stack([below, above], -1)  # (batch, N_samples, 2)
 
-    # cdf_g = tf.gather(cdf, inds_g, axis=-1, batch_dims=len(inds_g.shape)-2)
-    # bins_g = tf.gather(bins, inds_g, axis=-1, batch_dims=len(inds_g.shape)-2)
     matched_shape = [inds_g.shape[0], inds_g.shape[1], cdf.shape[-1]]
     cdf_g = torch.gather(cdf.unsqueeze(1).expand(matched_shape), 2, inds_g)
-    bins_g = torch.gather(z_vals_mid.unsqueeze(1).expand(matched_shape), 2, inds_g)
+    bins_g = torch.gather(bins.unsqueeze(1).expand(matched_shape), 2, inds_g)
 
     denom = (cdf_g[...,1]-cdf_g[...,0])
     denom[denom < 1e-5] = 1
     t = (u-cdf_g[...,0])/denom
     z_samples = bins_g[...,0] + t * (bins_g[...,1]-bins_g[...,0])
+    if include_init_z_vals:
+        z_vals, _ = torch.sort(torch.cat([z_vals.expand(N_rays, N_base_samples), z_samples], -1), -1)
+    else:
+        z_vals = z_samples
     
-    z_vals, _ = torch.sort(torch.cat([z_vals.expand(N_rays, N_base_samples), z_samples], -1), -1)
-    pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None] # [N_rays, N_samples + N_samples, 3]
-
-    return pts, z_vals
+    return z_vals
 
 # wrap the sample functions into a `nn.Module` for better extensibility
 class NeRFPointSampler(nn.Module):
@@ -139,13 +131,14 @@ class NeRFPointSampler(nn.Module):
     @torch.no_grad()
     def forward(self, rays_o: Tensor, rays_d: Tensor, 
             z_vals: Optional[Tensor]=None, weights: Optional[Tensor]=None):
-
         if weights is None:
-            pts, z_vals = uniform_sample(self.N_samples, rays_o, rays_d, 
-                            self.near, self.far, self.perturb, init_z_vals=self.init_z_vals)
+            perturb = self.perturb if self.training else 0
+            z_vals = uniform_sample(self.N_samples, rays_d.shape[0], self.near, self.far, 
+                            perturb, init_z_vals=self.init_z_vals, device=rays_o.device)
         else:
-            pts, z_vals = cdf_sample(self.N_importance, 
-                            rays_o, rays_d, z_vals, weights, det=self.det)
+            det = self.det and (not self.training)
+            z_vals = cdf_sample(self.N_importance, z_vals, weights, det=det)
+        pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,None] # [N_rays, N_samples, 3]
         return pts, z_vals
         
 

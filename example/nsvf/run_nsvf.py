@@ -118,11 +118,11 @@ def main():
     # prepare dataloader
     train_base_raysampler = \
         PerViewRaySampler(dataset.get_sub_set('train'), args.N_rand, args.N_iters, args.N_views, 
-            precrop=False, full_rays=args.full_rays, start_epoch=start,) # rank=args.local_rank, n_replica=n_replica)
+            precrop=False, full_rays=args.full_rays, start_epoch=start, normalize_dir=True) # rank=args.local_rank, n_replica=n_replica)
     train_vox_raysampler = VoxIntersectRaySampler(args.N_rand, train_base_raysampler, vox_grid, device=device)
-    test_raysampler = VoxIntersectRaySampler(0, RenderingRaySampler(dataset.get_sub_set('test')), 
-                            vox_grid, mask_sample=False, device=device, num_workers=1)
-    val_raysampler = VoxIntersectRaySampler(0, RenderingRaySampler(dataset.get_sub_set('val')), 
+    test_raysampler = VoxIntersectRaySampler(0, RenderingRaySampler(dataset.get_sub_set('test'), normalize_dir=True), 
+                            vox_grid, mask_sample=False, device=device, num_workers=0)
+    val_raysampler = VoxIntersectRaySampler(0, RenderingRaySampler(dataset.get_sub_set('val'), normalize_dir=True), 
                             vox_grid, mask_sample=False, device=device, num_workers=0)
 
     train_rayloader = DataLoader(train_vox_raysampler, num_workers=0) # vox_raysampler's N_workers==0, pin_mem==False

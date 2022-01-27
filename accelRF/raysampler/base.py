@@ -11,6 +11,7 @@ class BaseRaySampler(data.Dataset):
         dataset: Optional[BaseDataset],
         N_rand: int,
         length: Optional[int]=None,
+        normalize_dir: bool=False,
         device: torch.device='cpu',
         rank: int=-1,
         n_replica: int=1,
@@ -19,6 +20,7 @@ class BaseRaySampler(data.Dataset):
         super().__init__()
         self.dataset = dataset
         self.N_rand = N_rand
+        self.normalize_dir = normalize_dir
         self.length = length if length is not None else len(dataset)
         self.device = device
 
@@ -54,7 +56,9 @@ class RenderingRaySampler(BaseRaySampler):
     Just a alias of BaseRaySampler.
     '''
     def __init__(
-        self, dataset: BaseDataset, N_rand: int=0, device: torch.device = 'cpu', 
+        self, dataset: BaseDataset, N_rand: int=0, normalize_dir: bool=False, 
+        device: torch.device = 'cpu', 
         rank: int = -1, n_replica: int = 1, seed: Optional[int] = None) -> None:
 
-        super().__init__(dataset, N_rand, length=None, device=device, rank=rank, n_replica=n_replica, seed=seed)
+        super().__init__(dataset, N_rand, length=None, normalize_dir=normalize_dir,
+                device=device, rank=rank, n_replica=n_replica, seed=seed)

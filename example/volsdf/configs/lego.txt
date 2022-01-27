@@ -1,0 +1,32 @@
+expname = blender_paper_lego
+basedir = ./logs/volsdf
+datadir = /data/stu01/ruofan/nerf-experiment/data/nerf_synthetic/
+scene = lego
+dataset_type = blender
+
+N_iters = 10000
+N_rand = 2048
+N_views = 1
+
+N_samples = 64
+N_samples_eval = 128
+N_samples_extra = 32
+
+scene_bounding_sphere = 2
+inverse_sphere_bg = False
+with_eikonal_samples = True
+
+multires = 6
+multires_views = 4
+multires_bg = 10
+
+half_res = True
+lrate_decay = 500
+
+i_print = 50
+i_img = 500
+i_weights = 2000
+
+precrop_iters = 500
+precrop_frac = 0.5
+

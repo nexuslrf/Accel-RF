@@ -1,8 +1,8 @@
-expname = blender_paper_lego
+expname = BlendedMVS
 basedir = ./logs/volsdf
-datadir = /data/stu01/ruofan/nerf-experiment/data/nerf_synthetic/
-scene = lego
-dataset_type = blender
+datadir = /data/stu01/Datasets/BlendedMVS
+scene = 1
+dataset_type = mvs_scenes
 
 N_iters = 20000
 N_rand = 1024
@@ -28,9 +28,8 @@ half_res = True
 lrate_decay = 500
 
 i_print = 50
-i_img = 500
+i_img = 200
 i_weights = 2000
 
 precrop_iters = 500
 precrop_frac = 0.5
-

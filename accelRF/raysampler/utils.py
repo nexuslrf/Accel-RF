@@ -4,7 +4,8 @@ import torch
 
 # Ray helpers
 @torch.jit.script
-def get_rays(H: int, W: int, focal: float, c2w: torch.Tensor, normalize_dir: bool=False):
+def get_rays(H: int, W: int, focal: float, c2w: torch.Tensor, 
+        normalize_dir: bool=False, GL_coord: bool=True):
     
     device = c2w.device
     i, j = torch.meshgrid(
@@ -12,18 +13,19 @@ def get_rays(H: int, W: int, focal: float, c2w: torch.Tensor, normalize_dir: boo
         torch.linspace(0, H-1, H, device=device))  # pytorch's meshgrid has indexing='ij'
     i = i.t()
     j = j.t()
-    dirs = torch.stack([(i-W*.5)/focal, -(j-H*.5)/focal, -torch.ones_like(i, device=device)], -1) # note this func is for openGL coor
-    # in openCV, you may need: dirs = torch.stack([(i-W*.5)/focal, (j-H*.5)/focal, torch.ones_like(i, device=device)], -1)
+    if GL_coord:
+        dirs = torch.stack([(i-W*.5)/focal, -(j-H*.5)/focal, -torch.ones_like(i)], -1) # note this func is for openGL 
+    else:
+        dirs = torch.stack([(i-W*.5)/focal, (j-H*.5)/focal, torch.ones_like(i)], -1)
+
     # Rotate ray directions from camera frame to the world frame
-    rays_d = torch.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
+    rays_d = torch.sum(dirs[..., None, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
     # Translate camera frame's origin to the world frame. It is the origin of all rays.
     rays_o = c2w[:3,-1].expand(rays_d.shape)
     if normalize_dir:
         rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
     return rays_o, rays_d
 
-def get_rays_openCV():
-    pass
 
 def get_rays_np(H, W, K, c2w):
     i, j = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32), indexing='xy')

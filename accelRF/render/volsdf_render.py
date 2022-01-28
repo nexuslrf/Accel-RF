@@ -67,7 +67,7 @@ class VolSDFRender(nn.Module):
             gradients = torch.autograd.grad(sdf, pts, torch.ones_like(sdf), 
                                 retain_graph=self.training, create_graph=self.training)[0]
             with torch.set_grad_enabled(self.training):
-                rgb = self.rgb_net(pts, gradients, view_embed.expand(*pts.shape[:-1], -1), feats)
+                rgb = self.rgb_net(view_embed.expand(*pts.shape[:-1], -1), feats, pts, gradients)
                 density = self.density_fn(sdf)
                 free_energy = density[..., 0] * (z_vals[...,1:] - z_vals[...,:-1])
                 r_ret = volumetric_rendering(rgb, free_energy[...,None], z_vals, white_bkgd=False, 
@@ -77,7 +77,7 @@ class VolSDFRender(nn.Module):
                     # Background rendering
                     pts_embed_bg = self.bg_embedder_pts(pts_bg)
                     sdf_bg, feats_bg = self.bg_sdf_net(pts_embed_bg, pts_bg)
-                    rgb_bg = self.bg_rgb_net(None, None, view_embed.expand(*pts_bg.shape[:-1], -1), feats_bg)
+                    rgb_bg = self.bg_rgb_net(view_embed.expand(*pts_bg.shape[:-1], -1), feats_bg)
                     density_bg = self.bg_density_fn(sdf_bg)
                     r_ret_bg = volumetric_rendering(rgb_bg, density_bg, z_vals_bg, white_bkgd=False, rgb_only=True)
                     # Composite foreground and background
@@ -102,3 +102,14 @@ class VolSDFRender(nn.Module):
                     ret['normal_map'] = (normal_map + 1) / 2.
 
             return ret
+    
+    def jit_script(self):
+        self.embedder_pts = torch.jit.script(self.embedder_pts)
+        self.embedder_views = torch.jit.script(self.embedder_views)
+        self.sdf_net = torch.jit.script(self.sdf_net) if not self.sdf_net.weight_norm else self.sdf_net
+        self.rgb_net = torch.jit.script(self.rgb_net) if not self.rgb_net.weight_norm else self.rgb_net
+        if self.inverse_sphere_bg:
+            self.bg_embedder_pts = torch.jit.script(self.bg_embedder_pts)
+            self.bg_sdf_net = torch.jit.script(self.bg_sdf_net) if not self.bg_sdf_net.weight_norm else self.bg_sdf_net
+            self.bg_rgb_net = torch.jit.script(self.bg_rgb_net) if not self.bg_rgb_net.weight_norm else self.bg_rgb_net
+        return self

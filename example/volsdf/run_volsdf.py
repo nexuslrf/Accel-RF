@@ -103,7 +103,6 @@ def main():
         volsdf_render.load_state_dict(ckpt['state_dict'])
 
     lr_sched = optim.lr_scheduler.ExponentialLR(optimizer, 0.1**(1/(args.lrate_decay*1000)), last_epoch=start-1)
-
     if args.local_rank >=0:
         volsdf_render_ = torch.nn.parallel.DistributedDataParallel(volsdf_render, device_ids=[args.local_rank])
     else:

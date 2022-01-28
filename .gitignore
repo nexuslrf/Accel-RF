@@ -2,6 +2,7 @@
 __pycache__
 logs/
 test_DDP.py
+test_local.py
 build
 *.so
 *.egg-info

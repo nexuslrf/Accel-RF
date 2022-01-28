@@ -28,10 +28,11 @@ class SDFNet(nn.Module):
         self.sdf_bounding_sphere = sdf_bounding_sphere
         self.sphere_scale = sphere_scale
         dims = [d_in] + dims # + [d_out + feature_vector_size] 
-
+        self.weight_norm = weight_norm
         self.num_layers = len(dims) - 2
         self.skip_in = skip_in
 
+        self.lins = nn.ModuleList()
         for l in range(0, self.num_layers):
             if l + 1 in self.skip_in:
                 out_dim = dims[l + 1] - dims[0]
@@ -56,7 +57,7 @@ class SDFNet(nn.Module):
             if weight_norm:
                 lin = nn.utils.weight_norm(lin)
             
-            setattr(self, "lin" + str(l), lin)
+            self.lins.append(lin)
 
         # last layer.
         self.sdf_layer = nn.Linear(dims[-1], d_out)
@@ -71,16 +72,15 @@ class SDFNet(nn.Module):
 
         self.softplus = nn.Softplus(beta=100)
 
-    def forward(self, input, xyz: Optional[Tensor]=None, sdf_only: bool=False):
+    def forward(self, input: Tensor, xyz: Optional[Tensor]=None, sdf_only: bool=False):
         x = input
-        for l in range(0, self.num_layers):
-            lin = getattr(self, "lin" + str(l))
-            if l in self.skip_in:
-                x = torch.cat([x, input], -1) / np.sqrt(2)
+        for i, lin in enumerate(self.lins):
+            if i in self.skip_in:
+                x = torch.cat([x, input], -1) / (2**0.5)
             x = lin(x)
             x = self.softplus(x)
         sdf = self.sdf_layer(x)
-        
+
         ''' Clamping the SDF with the scene bounding sphere, so that all rays are eventually occluded '''
         if self.sdf_bounding_sphere > 0.0 and xyz is not None:
             sphere_sdf = self.sphere_scale * (self.sdf_bounding_sphere - xyz.norm(2, -1, keepdim=True))
@@ -105,31 +105,34 @@ class RGBNet(nn.Module):
 
         self.mode = mode
         dims = [d_in + feature_vector_size] + dims + [d_out]
-
+        self.weight_norm = weight_norm
         self.num_layers = len(dims) - 1
 
+        self.lins = nn.ModuleList()
         for l in range(0, self.num_layers):
             out_dim = dims[l + 1]
             lin = nn.Linear(dims[l], out_dim)
             if weight_norm:
                 lin = nn.utils.weight_norm(lin)
-            setattr(self, "lin" + str(l), lin)
+            self.lins.append(lin)
 
-        self.relu = nn.ReLU()
+        self.relu = nn.ReLU(inplace=True)
         self.sigmoid = torch.nn.Sigmoid()
 
-    def forward(self, points, normals, view_dirs, feature_vectors):
-        if self.mode == 'idr':
+    def forward(
+        self, view_dirs: Tensor, feature_vectors: Tensor, 
+        points: Optional[Tensor]=None, normals: Optional[Tensor]=None
+    ):
+        if points is not None and normals is not None:    # idr
             rendering_input = torch.cat([points, view_dirs, normals, feature_vectors], dim=-1)
-        elif self.mode == 'nerf':
+        else:                     # nerf
             rendering_input = torch.cat([view_dirs, feature_vectors], dim=-1)
 
         x = rendering_input
 
-        for l in range(0, self.num_layers):
-            lin = getattr(self, "lin" + str(l))
+        for i, lin in enumerate(self.lins):
             x = lin(x)
-            if l < self.num_layers - 2:
+            if i < self.num_layers - 1:
                 x = self.relu(x)
 
         x = self.sigmoid(x)
@@ -147,6 +150,9 @@ class Density(nn.Module):
     def forward(self, sdf, beta=None):
         return self.density_func(sdf, beta=beta)
 
+def laplace_fn(sdf: Tensor, beta: Tensor):
+    alpha = 1 / beta
+    return alpha * (0.5 + 0.5 * sdf.sign() * torch.expm1(-sdf.abs() / beta))
 
 class LaplaceDensity(Density):  # alpha * Laplace(loc=0, scale=beta).cdf(-sdf)
     def __init__(self, beta, beta_min=0.0001):

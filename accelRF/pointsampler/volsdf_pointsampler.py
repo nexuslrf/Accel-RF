@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from .nerf_pointsampler import get_z_vals, uniform_sample, cdf_sample
+from ..models.volsdf import laplace_fn
+
+# suppose volsdf only uses its laplace distribution conversion..
+volsdf_density_fn = laplace_fn
 
 @torch.jit.script
 def get_sphere_intersections(rays_o: Tensor, rays_d: Tensor, r: float=1.0):
@@ -20,9 +24,9 @@ def get_sphere_intersections(rays_o: Tensor, rays_d: Tensor, r: float=1.0):
     return sphere_intersections # [t0, t1]
 
 def get_error_bound(
-        beta: Tensor, density_fn: nn.Module, sdf: Tensor, dists: Tensor, d_star: Tensor
+        beta: Tensor, sdf: Tensor, dists: Tensor, d_star: Tensor
     ) -> Tensor:
-    density = density_fn(sdf, beta=beta)
+    density = volsdf_density_fn(sdf, beta=beta)
     shifted_free_energy = torch.cat([torch.zeros(dists.shape[0], 1).cuda(), dists * density[:, :-1]], dim=-1)
     integral_estimation = torch.cumsum(shifted_free_energy, dim=-1)
     error_per_section = torch.exp(-d_star / beta) * (dists ** 2.) / (4 * beta ** 2)
@@ -33,8 +37,8 @@ def get_error_bound(
 
 @torch.jit.script # this loop body is a good candidate for JIT.
 def error_bound_sampling_update(
-        z_vals, density_fn, sdf, beta0, beta, eps, beta_iters,
-        last_iter, add_tiny, N_samples, N_samples_eval, det
+        z_vals: Tensor, sdf: Tensor, beta0: Tensor, beta: Tensor, eps: float, beta_iters: int,
+        last_iter: bool, add_tiny: float, N_samples: int, N_samples_eval: int, det: bool
     ):
     device = z_vals.device
     # Calculating the bound d* (Theorem 1)
@@ -53,18 +57,18 @@ def error_bound_sampling_update(
     d_star = (d[:, 1:].sign() * d[:, :-1].sign() == 1) * d_star  # Fixing the sign
 
     # Updating beta using line search
-    curr_error = get_error_bound(beta0, density_fn, sdf, dists, d_star)
+    curr_error = get_error_bound(beta0, sdf, dists, d_star)
     beta[curr_error <= eps] = beta0
     beta_min, beta_max = beta0.unsqueeze(0).repeat(z_vals.shape[0]), beta
     for j in range(beta_iters):
         beta_mid = (beta_min + beta_max) / 2.
-        curr_error = get_error_bound(beta_mid.unsqueeze(-1), density_fn, sdf, dists, d_star)
+        curr_error = get_error_bound(beta_mid.unsqueeze(-1), sdf, dists, d_star)
         beta_max[curr_error <= eps] = beta_mid[curr_error <= eps]
         beta_min[curr_error > eps] = beta_mid[curr_error > eps]
     beta = beta_max
 
     # Upsample more points
-    density = density_fn(sdf, beta=beta.unsqueeze(-1))
+    density = volsdf_density_fn(sdf, beta=beta.unsqueeze(-1))
 
     dists = torch.cat([dists, 1e10*torch.ones(dists.shape[0],1, device=device)], -1)
     free_energy = dists * density
@@ -93,9 +97,10 @@ def error_bound_sampling_update(
     cdf_det = add_more or det
     samples = cdf_sample(N, z_vals, weights, cdf_det, mid_bins=False, eps=cdf_eps, include_init_z_vals=False)
     # Adding samples if we not converged
-    samples_idx = None
     if add_more:
         z_vals, samples_idx = torch.sort(torch.cat([z_vals, samples], -1), -1)
+    else:
+        samples_idx = None
     return samples, z_vals, samples_idx, beta, not_converge
 
 class VolSDFPointSampler(nn.Module):
@@ -167,7 +172,7 @@ class VolSDFPointSampler(nn.Module):
             total_iters += 1
             last_iter = (total_iters == self.max_total_iters)
             samples, z_vals, samples_idx, beta, not_converge = error_bound_sampling_update(
-                z_vals, density_fn, sdf, beta0, beta, self.eps, self.beta_iters, last_iter,
+                z_vals, sdf, beta0, beta, self.eps, self.beta_iters, last_iter,
                 self.add_tiny, self.N_samples, self.N_samples_eval, (not sdf_net.training)
             )
             
@@ -208,7 +213,7 @@ class VolSDFPointSampler(nn.Module):
 
 
 @torch.jit.script
-def depth2pts_outside(ray_o, ray_d, depth, bounding_sphere):
+def depth2pts_outside(ray_o: Tensor, ray_d: Tensor, depth: Tensor, bounding_sphere: float):
     '''
     ray_o, ray_d: [..., 3]
     depth: [...]; inverse of distance to sphere origin

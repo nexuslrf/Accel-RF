@@ -13,7 +13,7 @@ N_samples_eval = 128
 N_samples_extra = 32
 
 scene_bounding_sphere = 3
-inverse_sphere_bg = False
+inverse_sphere_bg = True
 with_eikonal_samples = True
 
 multires = 6
@@ -28,7 +28,7 @@ half_res = True
 lrate_decay = 500
 
 i_print = 50
-i_img = 200
+i_img = 1000
 i_weights = 2000
 
 precrop_iters = 500

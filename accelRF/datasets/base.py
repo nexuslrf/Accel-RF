@@ -8,6 +8,7 @@ class BaseDataset(data.Dataset):
     def __init__(self) -> None:
         super().__init__()
         self.downsample_factor = 1
+        self.GL_coord = True
 
     def render_downsample(self, render_factor: int):
         self.downsample_factor = render_factor

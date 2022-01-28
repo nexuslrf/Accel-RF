@@ -27,7 +27,8 @@ class BatchingRaySampler(BaseRaySampler):
         print('get rays')
         rays_o, rays_d = [], []
         for p in self.dataset.poses[:,:3,:4]:
-            ray_o, ray_d = get_rays(H, W, focal, p, normalize_dir=normalize_dir)
+            ray_o, ray_d = get_rays(H, W, focal, p, normalize_dir=normalize_dir,
+                                    GL_coord=self.dataset.GL_coord)
             rays_o.append(ray_o); rays_d.append(ray_d)
         rays_o = torch.stack(rays_o, 0); rays_d = torch.stack(rays_d, 0) # [N, H, W, 3]
         print('done, concats')
@@ -136,7 +137,8 @@ class PerViewRaySampler(BaseRaySampler):
             pose = img_dict['pose'][:3,:4]
             cam_viewdir = img_dict['pose'][:3,2]
             target = img_dict['gt_img'] # if 'gt_img' in img_dict else None
-            rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose, normalize_dir=self.normalize_dir) # TODO optimize it
+            rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose, normalize_dir=self.normalize_dir, 
+                                    GL_coord=self.dataset.GL_coord) # TODO optimize it
             if not self.full_rays:
                 # To avoid manually setting numpy random seed for ender user when num_workers > 1, 
                 # replace np.random.choice with torch.randperm

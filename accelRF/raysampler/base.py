@@ -42,7 +42,8 @@ class BaseRaySampler(data.Dataset):
         img_dict = self.dataset[index]
         pose = img_dict['pose'][:3,:4]
         # cam_viewdir = img_dict['pose'][:3,2]
-        rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose)
+        rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose, normalize_dir=self.normalize_dir, 
+                                    GL_coord=self.dataset.GL_coord)
         output['rays_o'] = rays_o.reshape(-1,3)  # (N, 3)
         output['rays_d'] = rays_d.reshape(-1,3)  # (N, 3)
         if 'gt_img' in img_dict:

@@ -80,10 +80,12 @@ class SDFNet(nn.Module):
             x = lin(x)
             x = self.softplus(x)
         sdf = self.sdf_layer(x)
+        
         ''' Clamping the SDF with the scene bounding sphere, so that all rays are eventually occluded '''
         if self.sdf_bounding_sphere > 0.0 and xyz is not None:
             sphere_sdf = self.sphere_scale * (self.sdf_bounding_sphere - xyz.norm(2, -1, keepdim=True))
             sdf = torch.minimum(sdf, sphere_sdf)
+
         if sdf_only:
             return sdf, None
         else:

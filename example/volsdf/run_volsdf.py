@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from accelRF.datasets import Blender, LLFF
+from accelRF.datasets.mvs_scenes import SceneDataset
 from accelRF.raysampler import RenderingRaySampler, PerViewRaySampler
 from accelRF.pointsampler.volsdf_pointsampler import VolSDFPointSampler
 from accelRF.models import PositionalEncoding
@@ -48,6 +49,8 @@ def main():
     if args.dataset_type == 'blender':
         dataset = Blender(args.datadir, args.scene, args.half_res, args.testskip)
         # args.near = dataset.near
+    if args.dataset_type == 'mvs_scenes':
+        dataset = SceneDataset(args.datadir, args.scene, args.testskip)
 
     sdf_d_in = (2*args.multires+1)*3
     rgb_d_in = 9+2*args.multires_views*3 if args.rgb_mode == 'idr' else (2*args.multires_views+1)*3
@@ -61,15 +64,15 @@ def main():
             args.N_samples_inverse_sphere, args.add_tiny, args.with_eikonal_samples),
         embedder_pts=PositionalEncoding(N_freqs=args.multires) if args.multires>0 else None,
         embedder_views=PositionalEncoding(N_freqs=args.multires_views) if args.multires_views>0 else None,
-        sdf_net=SDFNet(args.feature_vector_size, args.scene_bounding_sphere, sdf_d_in, 1, [args.W_sdf]*args.D_sdf, 
+        sdf_net=SDFNet(args.feature_vector_size, 0.0, sdf_d_in, 1, [args.W_sdf]*args.D_sdf, 
                     args.sdf_geo_init, args.sdf_bias, args.sdf_skip_in, args.sdf_weight_norm),
         rgb_net=RGBNet(args.feature_vector_size, args.rgb_mode, rgb_d_in, 3, 
                     [args.W_rgb]*args.D_rgb, args.rgb_weight_norm),
         density_fn=LaplaceDensity(args.beta, args.beta_min),
         # NeRF++ background
         bg_embedder_pts=PositionalEncoding(N_freqs=args.multires_bg) if args.multires_bg>0 else None,
-        bg_sdf_net=SDFNet(args.bg_feature_vector_size, args.scene_bounding_sphere, bg_sdf_d_in, 1, 
-                        [args.W_bg_sdf]*args.D_bg_sdf, skip_in=args.sdf_skip_in) if args.inverse_sphere_bg else None,
+        bg_sdf_net=SDFNet(args.bg_feature_vector_size, 0.0, bg_sdf_d_in, 1, 
+                        [args.W_bg_sdf]*args.D_bg_sdf, skip_in=args.bg_sdf_skip_in) if args.inverse_sphere_bg else None,
         bg_rgb_net=RGBNet(args.bg_feature_vector_size, 'nerf', bg_rgb_d_in, 3, 
                         [args.W_bg_rgb]*args.D_bg_rgb) if args.inverse_sphere_bg else None,
         bg_density_fn=AbsDensity() if args.inverse_sphere_bg else None,
@@ -124,7 +127,7 @@ def main():
         gt_rgb = ray_batch['gt_rgb'][0].to(device)
         render_out = volsdf_render_(rays_o, rays_d)
 
-        rgb_loss = img2mse(gt_rgb, render_out['rgb']) # l1loss(gt_rgb, render_out['rgb'])
+        rgb_loss = l1loss(gt_rgb, render_out['rgb']) # img2mse(gt_rgb, render_out['rgb']) # 
         eik_loss = eikonal_loss(render_out['grad_theta']) if 'grad_theta' in render_out else 0.
         
         loss = rgb_loss + args.eikonal_weight * eik_loss
@@ -156,7 +159,8 @@ def main():
                     tb_writer.add_image('gt_rgb', gt_rgb.reshape(H,W,-1), i, dataformats="HWC")
                     tb_writer.add_image('rgb', to8b(render_out['rgb'].cpu().numpy()).reshape(H,W,-1), i, dataformats='HWC')
                     if 'normal_map' in render_out:
-                        tb_writer.add_image('normal', render_out['normal_map'].cpu().numpy().reshape(H,W,-1), i, dataformats='HWC')
+                        normal_map = render_out['normal_map']
+                        tb_writer.add_image('normal', normal_map.cpu().numpy().reshape(H,W,-1), i, dataformats='HWC')
                     
         if i%args.i_testset == 0 and i > 0 and args.local_rank <= 0:
             eval(volsdf_render_, test_rayloader, dataset.get_hwf()[:2], os.path.join(savedir, f'testset_{i:06d}'))

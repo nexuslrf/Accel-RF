@@ -85,22 +85,23 @@ def config_parser():
     ## bg net
     parser.add_argument("--inverse_sphere_bg", action='store_true')
     parser.add_argument("--bg_feature_vector_size", type=int, default=256)
+    parser.add_argument("--multires_bg", type=int, default=10, 
+                        help='log2 of max freq for positional encoding (3D location)')
     parser.add_argument("--D_bg_sdf", type=int, default=8, 
                         help='layers in network')
     parser.add_argument("--W_bg_sdf", type=int, default=256, 
                         help='channels per layer')
-    parser.add_argument("--multires_bg", type=int, default=10, 
-                        help='log2 of max freq for positional encoding (3D location)')
+    parser.add_argument("--bg_sdf_skip_in", nargs='+', type=int, default=[4])
+    
     ## Not used.
     # parser.add_argument("--bg_sdf_geo_init", action='store_true')
     # parser.add_argument("--bg_sdf_weight_norm", action='store_true')
-    # parser.add_argument("--bg_sdf_skip_in", nargs='+', type=int, default=[4])
-    # parser.add_argument("--bg_sdf_bias", type=float, default=0.6)
+    # parser.add_argument("--bg_sdf_bias", type=float, default=0.0)
 
     parser.add_argument("--D_bg_rgb", type=int, default=1)
     parser.add_argument("--W_bg_rgb", type=int, default=128)
     parser.add_argument("--bg_rgb_mode", type=str, choices=['idr', 'nerf'], default='nerf')
-    parser.add_argument("--bg_rgb_weight_norm", action='store_true')
+    # parser.add_argument("--bg_rgb_weight_norm", action='store_true')
 
     # loss options
     parser.add_argument("--with_eikonal_samples", action='store_true')

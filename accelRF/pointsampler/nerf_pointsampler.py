@@ -105,13 +105,13 @@ def cdf_sample(
     denom = (cdf_g[...,1]-cdf_g[...,0])
     denom[denom < 1e-5] = 1
     t = (u-cdf_g[...,0])/denom
-    z_samples = bins_g[...,0] + t * (bins_g[...,1]-bins_g[...,0])
+    samples = bins_g[...,0] + t * (bins_g[...,1]-bins_g[...,0])
     if include_init_z_vals:
-        z_vals, _ = torch.sort(torch.cat([z_vals.expand(N_rays, N_base_samples), z_samples], -1), -1)
+        z_samples, _ = torch.sort(torch.cat([z_vals.expand(N_rays, N_base_samples), samples], -1), -1)
     else:
-        z_vals = z_samples
+        z_samples = samples
     
-    return z_vals
+    return z_samples
 
 # wrap the sample functions into a `nn.Module` for better extensibility
 class NeRFPointSampler(nn.Module):

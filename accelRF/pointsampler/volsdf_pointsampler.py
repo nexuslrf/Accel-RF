@@ -79,10 +79,10 @@ def error_bound_sampling_update(
     if add_more:
         ''' Sample more points proportional to the current error bound'''
         N = N_samples_eval
-        error_per_section = torch.exp(-d_star / beta.unsqueeze(-1)) * (dists ** 2.) / (4 * beta.unsqueeze(-1) ** 2)
+        error_per_section = torch.exp(-d_star / beta.unsqueeze(-1)) * (dists[:,:-1] ** 2.) / (4 * beta.unsqueeze(-1) ** 2)
         error_integral = torch.cumsum(error_per_section, dim=-1)
-        bound_opacity = (torch.clamp(torch.exp(error_integral),max=1.e6) - 1.0) * transmittance
-        weights = bound_opacity
+        bound_opacity = (torch.clamp(torch.exp(error_integral),max=1.e6) - 1.0) * transmittance[:,:-1]
+        weights = torch.cat([bound_opacity, torch.ones_like(bound_opacity[:,:1])], -1)
         cdf_eps = add_tiny
     else:
         ''' Sample the final sample set to be used in the volume rendering integral '''
@@ -130,7 +130,6 @@ class VolSDFPointSampler(nn.Module):
         beta0 = density_fn.get_beta().detach()
         _ones = torch.ones(rays_o.shape[0], 1, device=device)
         near = self.near * _ones
-
         if not self.inverse_sphere_bg:
             far = self.far * _ones
         else:
@@ -166,7 +165,7 @@ class VolSDFPointSampler(nn.Module):
 
             sdf = sdf.reshape_as(z_vals) # [N_rays, N_samples]
             total_iters += 1
-            last_iter = total_iters == self.max_total_iters
+            last_iter = (total_iters == self.max_total_iters)
             samples, z_vals, samples_idx, beta, not_converge = error_bound_sampling_update(
                 z_vals, density_fn, sdf, beta0, beta, self.eps, self.beta_iters, last_iter,
                 self.add_tiny, self.N_samples, self.N_samples_eval, (not sdf_net.training)
@@ -190,7 +189,7 @@ class VolSDFPointSampler(nn.Module):
         # add some of the near surface points
         pts_eik = None
         if self.with_eik_sample and self.training:
-            idx = torch.randint(z_vals.shape[-1], (z_vals.shape[0],)).cuda()
+            idx = torch.randint(z_vals.shape[-1], (z_vals.shape[0],), device=device)
             z_samples_eik = torch.gather(z_vals, 1, idx.unsqueeze(-1))
             pts_eik = rays_o[...,None,:] + rays_d[...,None,:] * z_samples_eik[...,None]
 
@@ -200,7 +199,10 @@ class VolSDFPointSampler(nn.Module):
                                             perturb=1 if sdf_net.training else 0, device=rays_d.device)
             z_vals_inverse_sphere = z_vals_inverse_sphere * (1./self.scene_bounding_sphere)
             z_vals_bg = torch.flip(z_vals_inverse_sphere, dims=[-1,])
-            pts_bg = depth2pts_outside(rays_o, rays_d, z_vals_bg, self.scene_bounding_sphere)
+            if z_vals_bg.shape[0] == 1:
+                z_vals_bg = z_vals_bg.expand(rays_d.shape[0], -1)
+            pts_bg = depth2pts_outside(rays_o[...,None,:], rays_d[...,None,:], z_vals_bg, 
+                            self.scene_bounding_sphere)
 
         return pts, z_vals, pts_bg, z_vals_bg, pts_eik
 

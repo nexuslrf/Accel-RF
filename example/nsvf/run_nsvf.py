@@ -118,8 +118,9 @@ def main():
     # prepare dataloader
     train_base_raysampler = \
         PerViewRaySampler(dataset.get_sub_set('train'), args.N_rand, args.N_iters, args.N_views, 
-            precrop=False, full_rays=args.full_rays, start_epoch=start, normalize_dir=True) # rank=args.local_rank, n_replica=n_replica)
-    train_vox_raysampler = VoxIntersectRaySampler(args.N_rand, train_base_raysampler, vox_grid, device=device)
+            precrop=False, full_rays=args.full_rays, use_mask=args.use_mask, start_epoch=start, normalize_dir=True) # rank=args.local_rank, n_replica=n_replica)
+    train_vox_raysampler = VoxIntersectRaySampler(args.N_rand, train_base_raysampler, vox_grid, 
+                                    mask_sample=(not args.use_mask), device=device)
     test_raysampler = VoxIntersectRaySampler(0, RenderingRaySampler(dataset.get_sub_set('test'), normalize_dir=True), 
                             vox_grid, mask_sample=False, device=device, num_workers=0)
     val_raysampler = VoxIntersectRaySampler(0, RenderingRaySampler(dataset.get_sub_set('val'), normalize_dir=True), 
@@ -149,7 +150,7 @@ def main():
         if i%args.i_print==0:
             psnr = mse2psnr(sub_losses['rgb'])
             tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()} " + \
-                    # f"Alpha: {sub_losses['alpha'].item()} " + \
+                    f"RGB: {sub_losses['rgb'].item()} Alpha: {sub_losses['alpha'].item()}" + \
                     f"Hit ratio: {hits.sum().item()/hits.shape[0]} " + \
                     f"Bg ratio: {(gt_rgb.sum(-1).eq(0)).sum().item()/hits.shape[0]}")
             if args.local_rank <= 0:

@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import torch.utils.data as data
 from .base import BaseRaySampler, RenderingRaySampler
-from .utils import get_rays
+from .utils import get_rays_uv
 
 class BatchingRaySampler(BaseRaySampler):
     def __init__(
@@ -12,6 +12,8 @@ class BatchingRaySampler(BaseRaySampler):
         N_rand: int=2048,
         length: int=1000,
         normalize_dir: bool=False,
+        precomp_rays: bool=False,
+        use_mask: bool=False,
         device: torch.device='cpu',
         start_epoch: int=0,
         rank: int=-1,
@@ -20,24 +22,36 @@ class BatchingRaySampler(BaseRaySampler):
         ) -> None:
         
         super().__init__(
-            dataset, N_rand, length-start_epoch, normalize_dir, device, rank, n_replica, seed)
+            dataset, N_rand, length-start_epoch, normalize_dir, use_mask,
+            device=device, rank=rank, n_replica=n_replica, seed=seed)
         #
         H, W, focal = self.dataset.get_hwf()
+        self.precomp_rays = precomp_rays
+        self.n_imgs = len(dataset)
+        self.n_pixels = self.n_imgs * H * W
+        self.n_per_batch = self.N_rand * self.n_replica
         # For random ray batching
-        print('get rays')
-        rays_o, rays_d = [], []
-        for p in self.dataset.poses[:,:3,:4]:
-            ray_o, ray_d = get_rays(H, W, focal, p, normalize_dir=normalize_dir,
-                                    openGL_coord=self.dataset.openGL_coord)
-            rays_o.append(ray_o); rays_d.append(ray_d)
-        rays_o = torch.stack(rays_o, 0); rays_d = torch.stack(rays_d, 0) # [N, H, W, 3]
-        print('done, concats')
-        rays_rgb = torch.stack([rays_o, rays_d, self.dataset.imgs], 0) # [ro+rd+rgb, N, H, W, 3]
-        self.rays_rgb = torch.reshape(rays_rgb, [3,-1,3]) # [ro+rd+rgb, N*H*W, 3]
-        print('shuffle rays')
-        self.shuffle_inds = torch.randperm(self.rays_rgb.shape[1], generator=self.rng, device=device)
-        print('done')
+        if precomp_rays:
+            rays_o, rays_d = [], []
+            for i in range(self.n_imgs):
+                K = dataset.get_K(i)[None,:]
+                ray_o, ray_d = get_rays_uv(self.uv, K, dataset.Ts[i:i+1], normalize_dir=normalize_dir, 
+                                        openGL_coord=self.dataset.openGL_coord)
+                rays_o.append(ray_o); rays_d.append(ray_d)
+            rays_o = torch.stack(rays_o, 0); rays_d = torch.stack(rays_d, 0) # [N, H, W, 3]
+            rays_rgb = torch.stack([rays_o, rays_d, self.dataset.imgs], 0) # [ro+rd+rgb, N, H, W, 3]
+            self.rays_rgb = torch.reshape(rays_rgb, [3,-1,3]) # [ro+rd+rgb, N*H*W, 3]
+        else:
+            self.img_inds = torch.arange(self.n_imgs, device=device)[:,None].expand(-1, H*W).reshape(-1)
+
+        self.reset_shuffle()
         self.i_batch = 0
+
+    def reset_shuffle(self):
+        self.shuffle_inds = torch.randperm(self.n_pixels, generator=self.rng, device=self.device)
+        if self.use_mask:
+            masks = self.dataset.get_pixel_masks().reshape(-1) # [n_pixels]
+            self.shuffle_inds = self.shuffle_inds[masks]
 
     def __getitem__(self, index):
         '''
@@ -49,13 +63,26 @@ class BatchingRaySampler(BaseRaySampler):
         output = {}
         # Random over all images
         batch_inds = self.shuffle_inds[self.i_batch+self.rank*self.N_rand:self.i_batch+(self.rank+1)*self.N_rand]
-        batch = self.rays_rgb[:, batch_inds] # [3, B, 2+1]
-        output['rays_o'], output['rays_d'], output['gt_rgb'] = batch[0], batch[1], batch[2]
-        cam_viewdir = None
+
+        if self.precomp_rays:
+            batch = self.rays_rgb[:, batch_inds] # [3, B, 2+1]
+            output['rays_o'], output['rays_d'], output['gt_rgb'] = batch[0], batch[1], batch[2]
+        else:
+            uv = self.uv[batch_inds % self.uv.shape[0]] # [B, 2]
+            img_idx = self.img_inds[batch_inds]
+            _uv = uv.long()
+            rgb = self.dataset.imgs[img_idx, _uv[:,1], _uv[:,0]]
+            K = self.dataset.get_K(img_idx)[None,:]
+            rays_o, rays_d = get_rays_uv(uv, K, self.dataset.Ts[img_idx], normalize_dir=self.normalize_dir, 
+                                        openGL_coord=self.dataset.openGL_coord)
+            output['rays_o'], output['rays_d'], output['gt_rgb'] = rays_o, rays_d, rgb
+        if self.use_mask:
+            output['pixel_idx'] = batch_inds
+
         self.i_batch += self.N_rand * self.n_replica
-        if self.i_batch >= self.rays_rgb.shape[1]:
+        if self.i_batch >= self.shuffle_inds.shape[0]:
             print("Shuffle data after an epoch!")
-            self.shuffle_inds = torch.randperm(self.rays_rgb.shape[1], generator=self.rng, device=self.device)
+            self.reset_shuffle()
             self.i_batch = 0
 
         return output
@@ -73,6 +100,7 @@ class PerViewRaySampler(BaseRaySampler):
         precrop_iters: int=500,
         full_rays: bool=False,
         normalize_dir: bool=False,
+        use_mask: bool=False,
         device: torch.device='cpu',
         start_epoch: int=0,
         rank: int=-1,
@@ -81,12 +109,14 @@ class PerViewRaySampler(BaseRaySampler):
         ) -> None:
         
         super().__init__(
-            dataset, N_rand, length-start_epoch, normalize_dir, device, rank, n_replica, seed)
+            dataset, N_rand, length-start_epoch, normalize_dir, use_mask,
+            device=device, rank=rank, n_replica=n_replica, seed=seed)
         self.N_views = N_views
         self.precrop = precrop
         self.precrop_frac = precrop_frac
         self.precrop_iters = precrop_iters - start_epoch
         self.full_rays = full_rays
+        self.use_mask = use_mask
         #
         H, W, focal = self.dataset.get_hwf()
         if full_rays:
@@ -95,16 +125,11 @@ class PerViewRaySampler(BaseRaySampler):
         if self.precrop and self.precrop_iters > 0: 
             dH = int(H//2 * self.precrop_frac)
             dW = int(W//2 * self.precrop_frac)
-            self.coords = torch.stack(
+            self.uv = torch.stack(
                 torch.meshgrid(
                     torch.linspace(H//2 - dH, H//2 + dH - 1, 2*dH, device=self.device), 
                     torch.linspace(W//2 - dW, W//2 + dW - 1, 2*dW, device=self.device)
-                ), -1)
-        else:
-            self.coords = torch.stack(torch.meshgrid(
-                torch.linspace(0, H-1, H, device=self.device), 
-                torch.linspace(0, W-1, W, device=self.device)), -1)  # (H, W, 2)
-        self.coords = self.coords.reshape(-1, 2)
+                ), -1).flip(-1).reshape(-1, 2)
 
     def disable_precrop(self) -> None: 
         '''
@@ -114,11 +139,12 @@ class PerViewRaySampler(BaseRaySampler):
         '''
         self.precrop = False
         H, W, _ = self.dataset.get_hwf()
-        self.coords = torch.stack(
+        self.uv = torch.stack(
             torch.meshgrid(
                 torch.linspace(0, H-1, H, device=self.device), 
                 torch.linspace(0, W-1, W, device=self.device)
-            ), -1).reshape(-1, 2) # (H, W, 2)
+            ), -1).flip(-1).reshape(-1, 2) # (N, 2)
+
 
     def __getitem__(self, index):
         '''
@@ -131,28 +157,40 @@ class PerViewRaySampler(BaseRaySampler):
         if self.precrop and index >= self.precrop_iters:
             self.disable_precrop()
             print('disable precrop!')
+        
+        if self.use_mask:
+            mask = self.dataset.get_pixel_masks()
+            pixels_per_img = mask.shape[1] * mask.shape[2]
+            output['pixel_idx'] = []
+
         for _ in range(self.N_views):
             img_i = torch.randint(len(self.dataset), (), generator=self.rng, device=self.device)
             img_dict = self.dataset[img_i]
-            pose = img_dict['pose'][:3,:4]
-            cam_viewdir = img_dict['pose'][:3,2]
+            T = img_dict['extrinsics'][None,:]
+            K = self.dataset.get_K(img_i)[None,:]
             target = img_dict['gt_img'] # if 'gt_img' in img_dict else None
-            rays_o, rays_d = get_rays(*self.dataset.get_hwf(), pose, normalize_dir=self.normalize_dir, 
-                                    openGL_coord=self.dataset.openGL_coord) # TODO optimize it
+            
+            view_uv = self.uv[mask[img_i].reshape(-1)] if self.use_mask else self.uv
+
             if not self.full_rays:
                 # To avoid manually setting numpy random seed for ender user when num_workers > 1, 
                 # replace np.random.choice with torch.randperm
                 # np.random.choice(self.coords.shape[0], size=[self.N_rand], replace=False)
-                rand_inds = torch.randperm(self.coords.shape[0], generator=self.rng, device=self.device) # (len_shape, 1)
+                rand_inds = torch.randperm(view_uv.shape[0], generator=self.rng, device=self.device) # (len_shape, 1)
                 select_inds = rand_inds[self.rank*self.N_rand:(self.rank+1)*self.N_rand]  # (N_rand,)
-                select_coords = self.coords[select_inds].long()  # (N_rand, 2)
-                output['rays_o'].append(rays_o[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
-                output['rays_d'].append(rays_d[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
-                output['gt_rgb'].append(target[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
+                uv = view_uv[select_inds]  # (N_rand, 2)
             else:
-                output['rays_o'].append(rays_o.reshape(-1, 3)[self.rank*self.N_rand:(self.rank+1)*self.N_rand])  # (N_rand, 3)
-                output['rays_d'].append(rays_d.reshape(-1, 3)[self.rank*self.N_rand:(self.rank+1)*self.N_rand])  # (N_rand, 3)
-                output['gt_rgb'].append(target.reshape(-1, 3)[self.rank*self.N_rand:(self.rank+1)*self.N_rand])  # (N_rand, 3)
+                uv = view_uv[self.rank*self.N_rand:(self.rank+1)*self.N_rand]
+
+            select_coords = uv.flip(-1).long()
+            rays_o, rays_d = get_rays_uv(uv, K, T, normalize_dir=self.normalize_dir, 
+                                openGL_coord=self.dataset.openGL_coord) # TODO optimize it
+            output['rays_o'].append(rays_o)  # (N_rand, 3)
+            output['rays_d'].append(rays_d)  # (N_rand, 3)
+            output['gt_rgb'].append(target[select_coords[:, 0], select_coords[:, 1]])  # (N_rand, 3)
+            if self.use_mask:
+                output['pixel_idx'].append(pixels_per_img*img_i+select_coords[:,0]*mask.shape[2]+select_coords[:,1])
+
         output = {k: torch.cat(output[k], 0) for k in output} # (N_views*N_rand, 3)
         # output['coords'] = self.coords # just for debug
         return output
@@ -200,14 +238,16 @@ class NeRFRaySampler(data.Dataset):
         elif use_batching:
             # For random ray batching
             self.raysampler = BatchingRaySampler(
-                dataset, N_rand, length, normalize_dir, device, start_epoch, rank, n_replica, seed
+                dataset, N_rand, length, normalize_dir, False, False, 
+                device=device, start_epoch=start_epoch, rank=rank, n_replica=n_replica, seed=seed
             )
         else:
             N_views = 1
             full_rays = False
             self.raysampler = PerViewRaySampler(
                 dataset, N_rand, length, N_views, precrop, precrop_frac, precrop_iters, full_rays, 
-                normalize_dir, device, start_epoch, rank, n_replica, seed
+                normalize_dir, 
+                device=device, start_epoch=start_epoch, rank=rank, n_replica=n_replica, seed=seed
             )
 
     def __len__(self):

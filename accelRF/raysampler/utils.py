@@ -101,11 +101,25 @@ def ndc_rays(H: int, W: int, focal: float, near: float, rays_o: torch.Tensor, ra
     return rays_o, rays_d
 
 @torch.jit.script
-def aabb_intersect(ray_o: torch.Tensor, ray_d: torch.Tensor, center_pts: torch.Tensor, 
+def aabb_intersect_center_radius(ray_o: torch.Tensor, ray_d: torch.Tensor, center_pts: torch.Tensor, 
     radius: float, near: float, far: float):
 
     tbot = (center_pts - radius - ray_o) / ray_d
     ttop = (center_pts + radius - ray_o) / ray_d
+    tmin = torch.where(tbot < ttop, tbot, ttop)
+    tmax = torch.where(tbot > ttop, tbot, ttop)
+    largest_tmin, _ = tmin.max(dim=1)
+    smallest_tmax, _ = tmax.min(dim=1)
+    t_near = largest_tmin.clamp_min(near)
+    t_far = smallest_tmax.clamp_max(far)
+    return t_near, t_far
+
+@torch.jit.script
+def aabb_intersect_bbox(ray_o: torch.Tensor, ray_d: torch.Tensor, 
+            bbox: torch.Tensor, near: float, far: float):
+
+    tbot = (bbox[:3] - ray_o) / ray_d
+    ttop = (bbox[3:] - ray_o) / ray_d
     tmin = torch.where(tbot < ttop, tbot, ttop)
     tmax = torch.where(tbot > ttop, tbot, ttop)
     largest_tmin, _ = tmin.max(dim=1)

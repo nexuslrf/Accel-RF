@@ -8,8 +8,9 @@ no_batching = True
 
 N_iters = 150000
 N_rand = 4096
-N_views = 4
-full_rays = True
+N_views = 1
+full_rays = False
+use_mask = True
 
 voxel_size = 0.4
 step_size = 0.125
@@ -30,6 +31,8 @@ loss_w_rgb = 128
 loss_w_alpha = 1
 loss_w_reg = 0
 
-early_stop_thres = 0.01
 bg_field = True
 min_color = 0
+
+i_img = 500
+i_weights = 2000

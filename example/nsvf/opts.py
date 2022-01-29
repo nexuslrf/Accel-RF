@@ -20,6 +20,8 @@ def config_parser():
     parser.add_argument("--no_batching", action='store_true', 
                         help='only take random rays from 1 image at a time')
     parser.add_argument("--full_rays", action='store_true', help='used for PerViewRaySampler')
+    parser.add_argument("--use_mask", action='store_true')
+
     # training options
     parser.add_argument("--N_iters", type=int, default=200000,
                         help='the number of training iterations')    

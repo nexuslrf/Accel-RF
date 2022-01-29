@@ -1,11 +1,11 @@
-from typing import Tuple
 import numpy as np
 import torch
+from torch import Tensor
 
 # Ray helpers
 @torch.jit.script
 def get_rays(H: int, W: int, focal: float, c2w: torch.Tensor, 
-        normalize_dir: bool=False, GL_coord: bool=True):
+        normalize_dir: bool=False, openGL_coord: bool=True):
     
     device = c2w.device
     i, j = torch.meshgrid(
@@ -13,7 +13,7 @@ def get_rays(H: int, W: int, focal: float, c2w: torch.Tensor,
         torch.linspace(0, H-1, H, device=device))  # pytorch's meshgrid has indexing='ij'
     i = i.t()
     j = j.t()
-    if GL_coord:
+    if openGL_coord:
         dirs = torch.stack([(i-W*.5)/focal, -(j-H*.5)/focal, -torch.ones_like(i)], -1) # note this func is for openGL 
     else:
         dirs = torch.stack([(i-W*.5)/focal, (j-H*.5)/focal, torch.ones_like(i)], -1)
@@ -25,6 +25,47 @@ def get_rays(H: int, W: int, focal: float, c2w: torch.Tensor,
     if normalize_dir:
         rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
     return rays_o, rays_d
+
+
+@torch.jit.script
+def get_rays_uv(
+    uv: Tensor, K: Tensor, extrinsics: Tensor, 
+    normalize_dir: bool=False, openGL_coord: bool=True
+):
+    '''
+    uv: [N, 2]
+    K: [N|1, x]
+    extrinsics: [N|1, 3|4, 4]
+    '''
+    z_d = torch.ones(uv.shape[0], device=uv.device)
+    if K.dim() == 2:
+        cx, cy = K[:,0], K[:,1]
+        if K.shape[1] == 3:
+            fx = fy = K[:,2]
+        else:
+            fx, fy = K[:,2], K[:,3]
+        x_d = (uv[:,0] - cx)/fx
+        y_d = (uv[:,1] - cy)/fy
+    else:
+        cx, cy = K[:,0,2], K[:,1,2]
+        fx, fy = K[:,0,0], K[:,1,1]
+        sk = K[:,0,1]
+        x_d = (uv[:,0] - cx + cy*sk/fy - sk*uv[:,1]/fy) / fx
+        y_d = (uv[:,1] - cy)/fy
+
+    if openGL_coord:
+        dirs = torch.stack([x_d, -y_d, -z_d], -1)
+    else:
+        dirs = torch.stack([x_d, y_d, z_d], -1)
+    
+    # Rotate ray directions from camera frame to the world frame
+    rays_d = torch.sum(dirs[..., None, :] * extrinsics[:,:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
+    # Translate camera frame's origin to the world frame. It is the origin of all rays.
+    rays_o = extrinsics[:,:3,-1].expand(rays_d.shape)
+    if normalize_dir:
+        rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
+    return rays_o, rays_d
+
 
 
 def get_rays_np(H, W, K, c2w):

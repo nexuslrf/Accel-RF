@@ -233,9 +233,10 @@ class LLFF(BaseDataset):
         print(poses.shape, imgs.shape, bds.shape)
         # convert np array to torch tensor
         self.imgs = torch.from_numpy(imgs)
-        self.poses = torch.from_numpy(poses[:,:3,:4]) # [N, 3, 4]
         self.H, self.W, self.focal = poses[0,:3,-1]
         self.H, self.W = int(self.H), int(self.W)
+        self.Ts = torch.from_numpy(poses[:,:3,:4]) # [N, 3, 4]
+        self.Ks = torch.FloatTensor([[0.5*self.W, 0.5*self.H, self.focal, self.focal]]) # [1, 4]
         self.bds = bds
         
         # split holdout sets
@@ -265,7 +266,7 @@ class LLFF(BaseDataset):
         print('NEAR FAR', self.near, self.far)
 
     def get_render_set(self, n_frame: int=120, path_zflat: bool=False):
-        poses = self.poses.numpy()
+        poses = self.Ts.numpy()
         if self.spherify:
             centroid = np.mean(poses[:,:3,3], 0)
             zh = centroid[2]
@@ -314,7 +315,9 @@ class LLFF(BaseDataset):
             render_poses = render_path_spiral(
                 c2w_path, up, rads, focal, zdelta, zrate=.5, rots=N_rots, N=n_frame)
             render_poses = np.array(render_poses).astype(np.float32)
+
         render_set = copy.copy(self)
         render_set.imgs = None
-        render_set.poses = torch.from_numpy(render_poses)
+        render_set.Ts = torch.from_numpy(render_poses)
+
         return render_set

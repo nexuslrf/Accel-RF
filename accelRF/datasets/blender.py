@@ -75,6 +75,7 @@ class Blender(BaseDataset):
     )->None:
         super().__init__()
         self.scene = scene
+        self.with_bbox = with_bbox
         basedir = os.path.join(root, scene)
         splits = ['train', 'val', 'test']
         metas = {}
@@ -137,12 +138,6 @@ class Blender(BaseDataset):
             'test': i_split[2]
         }
         self.focal = focal
-        # represent as an intrinsic matrix, might be useful later.
-        # self.K = np.array([
-        #     [focal, 0, 0.5*W],
-        #     [0, focal, 0.5*H],
-        #     [0, 0, 1]
-        # ])
 
         if imgs.shape[-1] == 4:
             # if keep_alpha:
@@ -153,7 +148,10 @@ class Blender(BaseDataset):
                 imgs = imgs[...,:3]*imgs[...,-1:]
 
         self.imgs = torch.FloatTensor(imgs) # [N, H, W, 3]
-        self.poses = torch.FloatTensor(poses) # [N, 3, 4]
+        self.Ts = torch.FloatTensor(poses) # [N, 3, 4]
+        # represent as an intrinsic matrix, might be useful later.
+        self.Ks = torch.FloatTensor([[0.5*W, 0.5*H, focal, focal]]) # [1, 4]
+
         if with_bbox:
             self.bbox = bounding_box[scene]
 
@@ -162,5 +160,5 @@ class Blender(BaseDataset):
                                 for angle in np.linspace(-180,180,n_frame+1)[:-1]], 0)
         render_set = copy.copy(self)
         render_set.imgs = None
-        render_set.poses = render_poses
+        render_set.Ts = render_poses
         return render_set

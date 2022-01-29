@@ -48,7 +48,7 @@ class SceneDataset(BaseDataset):
                  testskip=1,
                  ):
         super().__init__()
-        self.GL_coord = False
+        self.openGL_coord = False
 
         self.instance_dir = os.path.join(data_dir, 'scan{0}'.format(scan_id))
 
@@ -65,17 +65,18 @@ class SceneDataset(BaseDataset):
         scale_mats = [camera_dict['scale_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
         world_mats = [camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
 
-        self.intrinsics = []
-        self.poses = []
+        self.Ks = []
+        self.Ts = []
         for scale_mat, world_mat in zip(scale_mats, world_mats):
             P = world_mat @ scale_mat
             P = P[:3, :4]
             intrinsics, pose = load_K_Rt_from_P(None, P)
-            self.intrinsics.append(torch.from_numpy(intrinsics).float())
-            self.poses.append(torch.from_numpy(pose).float())
-        self.poses = torch.stack(self.poses, 0)
-        self.intrinsics = torch.stack(self.intrinsics, 0)
-        self.focal = self.intrinsics[:, 0,0].mean().item() # just assume focal_x = focal_y...
+            self.Ks.append(torch.from_numpy(intrinsics).float())
+            self.Ts.append(torch.from_numpy(pose).float())
+        self.Ts = torch.stack(self.Ts, 0)
+        self.Ks = torch.stack(self.Ks, 0)
+        
+        self.focal = self.Ks[:, 0,0].mean().item() # just assume focal_x = focal_y...
 
         self.imgs = []
         for path in image_paths:

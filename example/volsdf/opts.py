@@ -10,7 +10,8 @@ def config_parser():
                         help='where to store ckpts and logs')
     parser.add_argument("--datadir", type=str, default='./data/llff/fern', 
                         help='input data directory')
-    parser.add_argument("--scene", type=str, default='lego')
+    parser.add_argument("--scene_id", type=str, default='1',
+                       help="the scene id of blendermvs dataset")
 
     # sampling options
     parser.add_argument("--N_rand", type=int, default=1024, 

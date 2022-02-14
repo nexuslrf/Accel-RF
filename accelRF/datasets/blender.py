@@ -98,7 +98,7 @@ class Blender(BaseDataset):
 
             for frame in meta['frames'][::skip]:
                 fname = os.path.join(basedir, frame['file_path'] + '.png')
-                self.img_paths.append(frame['file_path'] + '.png')
+                self.img_paths.append(fname)
                 imgs.append(imageio.imread(fname))
                 poses.append(np.array(frame['transform_matrix']))
             imgs = (np.array(imgs) / 255.).astype(np.float32) # keep all 4 channels (RGBA)

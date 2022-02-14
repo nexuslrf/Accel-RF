@@ -77,6 +77,7 @@ class BaseDataset(data.Dataset):
         sub_set = copy.copy(self)
         sub_set.imgs = sub_set.imgs[self.i_split[split_set]]
         sub_set.Ts = sub_set.Ts[self.i_split[split_set]]
+        sub_set.img_paths = sub_set.img_paths[self.i_split[split_set]]
         if sub_set.Ks.shape[0] > 1:
             sub_set.Ks = sub_set.Ks[self.i_split[split_set]]
         return sub_set

@@ -61,9 +61,7 @@ def volumetric_rendering(
     ret['weights'] = weights
     if with_T: 
         ret['transmittance'] = transmittance
-    if rgb is None:
-        return ret
-    else:
+    if rgb is not None:
         comp_rgb = (weights[..., None] * rgb).sum(-2)
         acc = weights.sum(-1)
         if white_bkgd:
@@ -77,7 +75,7 @@ def volumetric_rendering(
             disp = acc / depth
             disp = torch.where((disp > 0) & (disp < inv_eps) & (acc > eps), disp, inv_eps)
             ret['disp'], ret['acc'] = disp, acc
-        return ret
+    return ret
 
 
 class NeRFRender(nn.Module):

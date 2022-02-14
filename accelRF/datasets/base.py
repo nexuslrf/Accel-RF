@@ -7,6 +7,7 @@ from torch import Tensor
 class BaseDataset(data.Dataset):
     Ks: Tensor  # camera intrinsics
     Ts: Tensor  # camera extrinsics
+    img_paths: List[str]
     pixel_masks: Optional[Tensor]
     
     def __init__(self) -> None:

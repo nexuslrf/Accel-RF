@@ -83,6 +83,7 @@ class Blender(BaseDataset):
             with open(os.path.join(basedir, 'transforms_{}.json'.format(s)), 'r') as fp:
                 metas[s] = json.load(fp)
 
+        self.img_paths = []
         all_imgs = []
         all_poses = []
         counts = [0]
@@ -97,6 +98,7 @@ class Blender(BaseDataset):
 
             for frame in meta['frames'][::skip]:
                 fname = os.path.join(basedir, frame['file_path'] + '.png')
+                self.img_paths.append(frame['file_path'] + '.png')
                 imgs.append(imageio.imread(fname))
                 poses.append(np.array(frame['transform_matrix']))
             imgs = (np.array(imgs) / 255.).astype(np.float32) # keep all 4 channels (RGBA)

@@ -113,7 +113,7 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
     imgs = np.stack(imgs, -1)  
     
     print('Loaded image data', imgs.shape, poses[:,-1,0])
-    return poses, bds, imgs
+    return poses, bds, imgs, imgfiles
 
 
 def normalize(x):
@@ -208,7 +208,8 @@ class LLFF(BaseDataset):
         self.use_ndc = use_ndc
 
         basedir = os.path.join(root, scene)
-        poses, bds, imgs = _load_data(basedir, factor=factor)
+        poses, bds, imgs, imgfiles = _load_data(basedir, factor=factor)
+        self.img_paths = imgfiles
         print('Loaded', basedir, bds.min(), bds.max())
 
         # Correct rotation matrix ordering and move variable dim to axis 0

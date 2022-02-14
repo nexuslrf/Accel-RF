@@ -58,6 +58,7 @@ class SceneDataset(BaseDataset):
 
         image_dir = '{0}/image'.format(self.instance_dir)
         image_paths = sorted(glob_imgs(image_dir))
+        self.img_paths = image_paths
         self.n_images = len(image_paths)
 
         self.cam_file = '{0}/cameras.npz'.format(self.instance_dir)

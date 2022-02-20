@@ -109,7 +109,7 @@ def cdf_sample(
     if include_init_z_vals:
         z_samples, _ = torch.sort(torch.cat([z_vals.expand(N_rays, N_base_samples), samples], -1), -1)
     else:
-        z_samples = samples
+        z_samples, _ = torch.sort(samples, -1)
     
     return z_samples
 

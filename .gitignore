@@ -8,4 +8,5 @@ build
 *.egg-info
 *.egg
 doc/generated
-doc/_*
+*.pt
+

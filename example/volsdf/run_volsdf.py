@@ -139,7 +139,7 @@ def main():
         if i%args.i_print==0:
             mse = img2mse(gt_rgb, render_out['rgb'])
             psnr = mse2psnr(mse)
-            tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()} (rgb: {rgb_loss.item()}, eik: {eik_loss.item()})  PSNR: {psnr.item()}")
+            tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()} (rgb: {rgb_loss.item()}, eik: {eik_loss.item()}, grad_theta: {render_out['grad_theta'].norm()})  PSNR: {psnr.item()}")
             if args.local_rank <= 0:
                 tb_writer.add_scalar('loss', loss, i)
                 tb_writer.add_scalar('psnr', psnr, i)

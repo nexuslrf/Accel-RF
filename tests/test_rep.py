@@ -40,7 +40,7 @@ class TestVoxelGrid(unittest.TestCase):
         logging.info(vox_grid.center2corner.shape)
         logging.info(f'{vox_grid.center2corner[0]}, {vox_grid.center2corner[1]}')
 
-    @unittest.SkipTest
+    # @unittest.SkipTest
     def test_ray_intersect(self):
         from accelRF.raysampler.utils import get_rays
         import accelRF._C.rep._ext as rep_ext
@@ -52,7 +52,7 @@ class TestVoxelGrid(unittest.TestCase):
         H, W = 800, 800
         f = 1111.1110311937682
         voxelsize = 0.4
-        rays_o, rays_d = get_rays(H, W, f, pose) # 800,800,3
+        rays_o, rays_d = get_rays(H, W, f, pose, True) # 800,800,3
         rays_o, rays_d = rays_o.reshape(-1, 3), rays_d.reshape(-1, 3)
         vox_grid = VoxelGrid(self.bbox_pt, voxelsize).to('cuda')
         pts = vox_grid.center_points # 
@@ -87,6 +87,7 @@ class TestVoxelGrid(unittest.TestCase):
         self.assertEqual(inds_x.sum() - inds_m.sum(), 0)
         print(inds_m.shape, hits.shape)
 
+    @unittest.SkipTest
     def test_splitting(self):
         logging.info('Test splitting')
         bbox_pt = torch.tensor([0,0,0, 1.6, 2.4, 2.0])

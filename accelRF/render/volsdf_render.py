@@ -87,7 +87,7 @@ class VolSDFRender(nn.Module):
                     # Sample points for the eikonal loss
                     n_eik_points = N_rays
                     pts_eik = torch.empty(n_eik_points, 3, device=rays_o.device).uniform_(-self.scene_bounding_sphere, self.scene_bounding_sphere)
-                    pts_eik = torch.cat([pts_eik, pts_eik_near.reshape(-1,3)], 0)
+                    pts_eik = torch.cat([pts_eik, pts_eik_near.reshape(-1,3)], 0) if pts_eik_near is not None else pts_eik
 
                     pts_eik.requires_grad_(True)
                     sdf_eik, _ = self.sdf_net(self.embedder_pts(pts_eik), pts_eik, sdf_only=True)

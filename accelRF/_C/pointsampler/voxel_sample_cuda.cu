@@ -105,7 +105,7 @@ __global__ void voxel_cdf_sample_kernel(
     const int *__restrict__ pts_idx,
     const float *__restrict__ min_depth,
     const float *__restrict__ max_depth,
-    const float *__restrict__ uniform_noise,
+    const float *__restrict__ uniform_noise, // 【0, 1.】
     const float *__restrict__ probs,
     const int *__restrict__ steps,
     int *__restrict__ sampled_idx,

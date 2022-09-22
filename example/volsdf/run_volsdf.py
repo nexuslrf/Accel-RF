@@ -47,10 +47,10 @@ to8b = lambda x : (255*np.clip(x,0,1)).astype(np.uint8)
 def main():
     # prepare data
     if args.dataset_type == 'blender':
-        dataset = Blender(args.datadir, args.scene_id, args.half_res, args.testskip)
+        dataset = Blender(args.datadir, args.scene, args.half_res, args.testskip)
         # args.near = dataset.near
     if args.dataset_type == 'mvs_scenes':
-        dataset = SceneDataset(args.datadir, args.scene_id, args.testskip)
+        dataset = SceneDataset(args.datadir, args.scene, args.testskip)
 
     sdf_d_in = (2*args.multires+1)*3
     rgb_d_in = 9+2*args.multires_views*3 if args.rgb_mode == 'idr' else (2*args.multires_views+1)*3
@@ -145,8 +145,8 @@ def main():
                 tb_writer.add_scalar('psnr', psnr, i)
                 if i%args.i_img==0:
                     # Log a rendered validation view to Tensorboard
-                    img_i=torch.randint(len(val_raysampler), ())
-                    ray_batch = val_raysampler[img_i]
+                    img_i = torch.randint(len(test_raysampler), ())
+                    ray_batch = test_raysampler[img_i]
                     rays_o, rays_d = ray_batch['rays_o'].to(device), ray_batch['rays_d'].to(device)
                     gt_rgb = ray_batch['gt_rgb'].to(device)
                     volsdf_render_.eval()

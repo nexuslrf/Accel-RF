@@ -13,8 +13,7 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from accelRF.datasets import Blender, LLFF
-from accelRF.datasets.mvs_scenes import SceneDataset
+from accelRF.datasets import Blender, SceneDataset, NSVFDataset
 from accelRF.raysampler import RenderingRaySampler, PerViewRaySampler
 from accelRF.pointsampler.volsdf_pointsampler import VolSDFPointSampler
 from accelRF.models import PositionalEncoding
@@ -51,6 +50,8 @@ def main():
         # args.near = dataset.near
     if args.dataset_type == 'mvs_scenes':
         dataset = SceneDataset(args.datadir, args.scene, args.testskip)
+    if args.dataset_type == 'nsvf_datasets':
+        dataset = NSVFDataset(args.datadir, args.scene, args.testskip)
 
     sdf_d_in = (2*args.multires+1)*3
     rgb_d_in = 9+2*args.multires_views*3 if args.rgb_mode == 'idr' else (2*args.multires_views+1)*3
@@ -59,7 +60,7 @@ def main():
 
     volsdf_render = VolSDFRender(
         # VolSDF model
-        point_sampler=VolSDFPointSampler(args.scene_bounding_sphere, args.near, args.N_samples, args.N_samples_eval,
+        point_sampler=VolSDFPointSampler(args.scene_bounding_sphere, args.near, args.far, args.N_samples, args.N_samples_eval,
             args.N_samples_extra, args.eps, args.beta_iters, args.max_total_iters, args.inverse_sphere_bg,
             args.N_samples_inverse_sphere, args.add_tiny, args.with_eikonal_samples),
         embedder_pts=PositionalEncoding(N_freqs=args.multires) if args.multires>0 else None,

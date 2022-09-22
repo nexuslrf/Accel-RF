@@ -32,6 +32,7 @@ def config_parser():
     parser.add_argument("--N_samples_eval", type=int, default=128)
     parser.add_argument("--N_samples_extra", type=int, default=32)
     parser.add_argument("--near", type=float, default=0.0)
+    parser.add_argument("--far", type=float, default=0.0)
     parser.add_argument("--eps", type=float, default=0.1)
     parser.add_argument("--beta_iters", type=int, default=10)
     parser.add_argument("--max_total_iters", type=int, default=5)

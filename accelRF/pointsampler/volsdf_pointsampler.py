@@ -108,11 +108,13 @@ class VolSDFPointSampler(nn.Module):
     Basically equivalent to VolSDF's ErrorBoundSampler
     https://github.com/lioryariv/volsdf/blob/main/code/model/ray_sampler.py#L46
     '''
-    def __init__(self, scene_bounding_sphere, near, N_samples, N_samples_eval, N_samples_extra,
+    def __init__(self, scene_bounding_sphere, near, far, N_samples, N_samples_eval, N_samples_extra,
                  eps, beta_iters, max_total_iters, inverse_sphere_bg=False, 
                  N_samples_inverse_sphere=0, add_tiny=0.0, with_eik_sample=True):
         super().__init__()
-        self.near, self.far = near, 2*scene_bounding_sphere
+        self.near, self.far = near, far
+        if self.far <=0:
+            self.far = 2*scene_bounding_sphere
         self.N_samples = N_samples
         self.N_samples_eval = N_samples_eval
         self.N_samples_extra = N_samples_extra

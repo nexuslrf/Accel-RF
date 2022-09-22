@@ -8,7 +8,14 @@
 * [x] Support JIT optimization.
 * [x] Support multi-GPU training.
 * [ ] amp features **WIP**
-	
+
+### Supported Models
+
+* [x] Vanilla NeRF
+* [x] NSVF
+* [x] VolSDF
+* [ ] ... 
+
 ### Framework:
 
 The whole NeRF training workflow can be decomposed into major 5 modules/steps.
@@ -20,6 +27,8 @@ The whole NeRF training workflow can be decomposed into major 5 modules/steps.
 * NeRF's dataset is a set of images (with camera poses) around a scene. Unlike datasets for other DL training tasks, this dataset does not output data that can be directly used by NN models. Given an index i, the dataset just outputs i-th image and its corresponding camera pose. The outputs are then be processed by RaySampler and PointSampler sequentially.
 * Currently supported dataset:
     * [x] NeRF Blender
+    * [x] LLFF
+    * [x] BlendedMVS (in volsdf format) 
     * [ ] To be added…
 
 **RaySampler**

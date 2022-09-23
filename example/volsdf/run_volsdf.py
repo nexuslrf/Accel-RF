@@ -80,6 +80,7 @@ def main():
         # other options
         scene_bounding_sphere=args.scene_bounding_sphere,
         with_eikonal=args.with_eikonal_samples,
+        white_bkgd=args.white_bkgd,
         chunk=args.chunk
     ).to(device)
 

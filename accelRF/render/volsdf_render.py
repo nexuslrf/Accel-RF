@@ -20,6 +20,7 @@ class VolSDFRender(nn.Module):
         bg_density_fn: Optional[nn.Module]=None,
         scene_bounding_sphere: float=3.,
         with_eikonal: bool=True,
+        white_bkgd: bool=False,
         chunk: int=1024*16
     ):
         super().__init__()
@@ -36,6 +37,7 @@ class VolSDFRender(nn.Module):
         self.bg_density_fn = bg_density_fn
         self.with_eikonal = with_eikonal
         self.scene_bounding_sphere = scene_bounding_sphere
+        self.white_bkgd = white_bkgd
         self.chunk = chunk
 
     def forward(self, rays_o: Tensor, rays_d: Tensor):
@@ -70,7 +72,8 @@ class VolSDFRender(nn.Module):
                 rgb = self.rgb_net(view_embed.expand(*pts.shape[:-1], -1), feats, pts, gradients)
                 density = self.density_fn(sdf)
                 free_energy = density[..., 0] * (z_vals[...,1:] - z_vals[...,:-1])
-                r_ret = volumetric_rendering(rgb, free_energy[...,None], z_vals, white_bkgd=False, 
+                white_bkgd = True if self.white_bkgd else False
+                r_ret = volumetric_rendering(rgb, free_energy[...,None], z_vals, white_bkgd=white_bkgd, 
                                     rgb_only=True, with_dist=True, with_T=True)
                 ret['rgb'] = r_ret['rgb']    
                 if self.inverse_sphere_bg:

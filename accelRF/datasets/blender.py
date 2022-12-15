@@ -3,7 +3,7 @@ import json
 import numpy as np
 import imageio
 import cv2
-
+import tqdm
 import torch
 import copy
 from .base import BaseDataset
@@ -77,11 +77,14 @@ class Blender(BaseDataset):
         self.scene = scene
         self.with_bbox = with_bbox
         basedir = os.path.join(root, scene)
-        splits = ['train', 'val', 'test']
+        splits = ['train', 'test', 'val']
         metas = {}
         for s in splits:
-            with open(os.path.join(basedir, 'transforms_{}.json'.format(s)), 'r') as fp:
-                metas[s] = json.load(fp)
+            json_file = os.path.join(basedir, 'transforms_{}.json'.format(s))
+            if os.path.exists(json_file):
+                with open(json_file, 'r') as fp:
+                    metas[s] = json.load(fp)
+        splits = metas.keys()
 
         self.img_paths = []
         all_imgs = []
@@ -96,7 +99,7 @@ class Blender(BaseDataset):
             else:
                 skip = testskip
 
-            for frame in meta['frames'][::skip]:
+            for frame in tqdm.tqdm(meta['frames'][::skip]):
                 fname = os.path.join(basedir, frame['file_path'] + '.png')
                 self.img_paths.append(fname)
                 imgs.append(imageio.imread(fname))
@@ -107,7 +110,7 @@ class Blender(BaseDataset):
             all_imgs.append(imgs)
             all_poses.append(poses)
 
-        i_split = [np.arange(counts[i], counts[i+1]) for i in range(3)]
+        i_split = [np.arange(counts[i], counts[i+1]) for i in range(len(splits))]
 
         imgs = np.concatenate(all_imgs, 0)
         poses = np.concatenate(all_poses, 0)
@@ -136,8 +139,8 @@ class Blender(BaseDataset):
         self.H, self.W = H, W
         self.i_split = {
             'train': i_split[0],
-            'val': i_split[1],
-            'test': i_split[2]
+            'test': i_split[1],
+            'val': i_split[2] if 'val' in splits else i_split[1]
         }
         self.focal = focal
 

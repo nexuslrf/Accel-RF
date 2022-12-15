@@ -102,6 +102,7 @@ class VolSDFRender(nn.Module):
                     normals = gradients / gradients.norm(2, -1, keepdim=True)
                     normals = normals.reshape(-1, N_samples, 3)
                     normal_map = torch.sum(r_ret['weights'].unsqueeze(-1) * normals, 1)
+                    normal_map = r_ret['transmittance'][...,-1:] * 1 + normal_map
                     ret['normal_map'] = (normal_map + 1) / 2.
 
             return ret

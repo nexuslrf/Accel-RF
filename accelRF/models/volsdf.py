@@ -123,9 +123,9 @@ class RGBNet(nn.Module):
         self, view_dirs: Tensor, feature_vectors: Tensor, 
         points: Optional[Tensor]=None, normals: Optional[Tensor]=None
     ):
-        if points is not None and normals is not None:    # idr
+        if self.mode == 'idr':    # idr
             rendering_input = torch.cat([points, view_dirs, normals, feature_vectors], dim=-1)
-        else:                     # nerf
+        elif self.mode == 'nerf':                     # nerf
             rendering_input = torch.cat([view_dirs, feature_vectors], dim=-1)
 
         x = rendering_input

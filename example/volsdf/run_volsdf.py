@@ -46,7 +46,7 @@ to8b = lambda x : (255*np.clip(x,0,1)).astype(np.uint8)
 def main():
     # prepare data
     if args.dataset_type == 'blender':
-        dataset = Blender(args.datadir, args.scene, args.half_res, args.testskip)
+        dataset = Blender(args.datadir, args.scene, args.half_res, args.testskip, args.white_bkgd)
         # args.near = dataset.near
     if args.dataset_type == 'mvs_scenes':
         dataset = SceneDataset(args.datadir, args.scene, args.testskip)
@@ -173,6 +173,9 @@ def main():
                 'state_dict': volsdf_render.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
             }, path)
+    
+    if start > 0:
+        eval(volsdf_render_, test_rayloader, dataset.get_hwf()[:2], os.path.join(savedir, f'testset_{start:06d}'))
 
 def eval(volsdf_render, rayloader, img_hw, testsavedir):
     os.makedirs(testsavedir, exist_ok=True) 
@@ -184,6 +187,9 @@ def eval(volsdf_render, rayloader, img_hw, testsavedir):
         psnr = mse2psnr(img2mse(gt_rgb, render_out['rgb']))
         imageio.imwrite(os.path.join(testsavedir, f'{i:03d}.png'), 
                     to8b(render_out['rgb'].cpu().numpy()).reshape(*img_hw,-1))
+        if 'normal_map' in render_out:
+            imageio.imwrite(os.path.join(testsavedir, f'{i:03d}_normal.png'), 
+                    to8b(render_out['normal_map'].cpu().numpy()).reshape(*img_hw,-1))
         tqdm.write(f"[Test] #: {i} PSNR: {psnr.item()}")
     volsdf_render.train()
 

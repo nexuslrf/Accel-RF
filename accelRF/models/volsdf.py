@@ -1,6 +1,7 @@
 from typing import Optional
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 import numpy as np
 
@@ -185,3 +186,48 @@ class SimpleDensity(Density):  # like NeRF
             noise = torch.randn(sdf.shape).cuda() * self.noise_std
             sdf = sdf + noise
         return torch.relu(sdf)
+
+
+class NeuSDensity(nn.Module):
+    def __init__(self, init_val):
+        super().__init__()
+        self.variance = nn.Parameter(torch.tensor(init_val).reshape(1,1))
+
+    def forward(self, sdf, dirs, dists, gradients=None, cos_anneal_ratio=1.0):
+        batch_size, n_samples = sdf.shape[0], sdf.shape[1]
+        inv_s = torch.exp(self.variance * 10.0).clip(1e-6, 1e6)   # [1, 1]
+        inv_s = inv_s.expand(batch_size * n_samples, 1)
+
+        if gradients is not None:
+            true_cos = (dirs * gradients).sum(-1, keepdim=True)
+
+            # "cos_anneal_ratio" grows from 0 to 1 in the beginning training iterations. The anneal strategy below makes
+            # the cos value "not dead" at the beginning training iterations, for better convergence.
+            iter_cos = -(F.relu(-true_cos * 0.5 + 0.5) * (1.0 - cos_anneal_ratio) +
+                        F.relu(-true_cos) * cos_anneal_ratio)  # always non-positive
+
+            # Estimate signed distances at section points
+            estimated_next_sdf = sdf + iter_cos * dists.reshape(-1, 1) * 0.5
+            estimated_prev_sdf = sdf - iter_cos * dists.reshape(-1, 1) * 0.5
+        else:
+            prev_sdf, next_sdf = sdf[:, :-1], sdf[:, 1:]
+            # prev_z_vals, next_z_vals = z_vals[:, :-1], z_vals[:, 1:]
+            mid_sdf = (prev_sdf + next_sdf) * 0.5
+            cos_val = (next_sdf - prev_sdf) / (dists + 1e-5)
+            prev_cos_val = torch.cat([torch.zeros([batch_size, 1]), cos_val[:, :-1]], dim=-1)
+            cos_val = torch.min(cos_val, prev_cos_val)
+            cos_val = cos_val.clip(-1e3, 0.0)
+
+            estimated_prev_sdf = mid_sdf - cos_val * dists * 0.5
+            estimated_next_sdf = mid_sdf + cos_val * dists * 0.5
+
+        prev_cdf = torch.sigmoid(estimated_prev_sdf * inv_s)
+        next_cdf = torch.sigmoid(estimated_next_sdf * inv_s)
+
+        p = prev_cdf - next_cdf
+        c = prev_cdf
+
+        alpha = ((p + 1e-5) / (c + 1e-5)).reshape(batch_size, n_samples).clip(0.0, 1.0)
+
+
+        return alpha

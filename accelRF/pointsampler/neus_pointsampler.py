@@ -15,8 +15,9 @@ def up_sample(z_vals: Tensor, sdf: Tensor, N_samples: int, inv_s: int):
 
     prev_sdf, next_sdf = sdf[:, :-1], sdf[:, 1:]
     prev_z_vals, next_z_vals = z_vals[:, :-1], z_vals[:, 1:]
+    dist = (next_z_vals - prev_z_vals)
     mid_sdf = (prev_sdf + next_sdf) * 0.5
-    cos_val = (next_sdf - prev_sdf) / (next_z_vals - prev_z_vals + 1e-5)
+    cos_val = (next_sdf - prev_sdf) / (dist + 1e-5)
 
     # ----------------------------------------------------------------------------------------------------------
     # Use min value of [ cos, prev_cos ]
@@ -38,7 +39,6 @@ def up_sample(z_vals: Tensor, sdf: Tensor, N_samples: int, inv_s: int):
     cos_val = torch.min(cos_val, prev_cos_val)
     cos_val = cos_val.clip(-1e3, 0.0)
     
-    dist = (next_z_vals - prev_z_vals)
     prev_esti_sdf = mid_sdf - cos_val * dist * 0.5
     next_esti_sdf = mid_sdf + cos_val * dist * 0.5
     prev_cdf = torch.sigmoid(prev_esti_sdf * inv_s)

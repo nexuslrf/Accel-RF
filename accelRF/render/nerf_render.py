@@ -11,7 +11,7 @@ from accelRF.raysampler.utils import ndc_rays
 def volumetric_rendering(
     rgb: Optional[Tensor], sigma: Tensor, 
     z_vals: Tensor, dir_lens: Optional[Tensor]=None, 
-    white_bkgd: bool=False, with_dist: bool=False,
+    white_bkgd: bool=False, with_dist: bool=False, with_alpha: bool=False,
     rgb_only: bool=False, with_T: bool=False) -> Dict[str, Tensor]:
     """Volumetric Rendering Function.
 
@@ -35,24 +35,28 @@ def volumetric_rendering(
     """
     eps = 1e-10
     ret = {}
-    if not with_dist:
-        dists = torch.cat([
-            z_vals[..., 1:] - z_vals[..., :-1],
-            1e10 * torch.ones_like(z_vals[..., :1])
-        ], -1) # [N_rays, N_samples]
-        # Multiply each distance by the norm of its corresponding direction ray
-        # to convert to real world distance (accounts for non-unit directions).
-        if dir_lens is not None:
-            dists = dists * dir_lens
-        # Note that we're quietly turning sigma from [..., 0] to [...].
-        free_energy = sigma[..., 0] * dists
-    else:
-        free_energy = sigma[..., 0]
+    if not with_alpha:
+        if not with_dist:
+            dists = torch.cat([
+                z_vals[..., 1:] - z_vals[..., :-1],
+                1e10 * torch.ones_like(z_vals[..., :1])
+            ], -1) # [N_rays, N_samples]
+            # Multiply each distance by the norm of its corresponding direction ray
+            # to convert to real world distance (accounts for non-unit directions).
+            if dir_lens is not None:
+                dists = dists * dir_lens
+            # Note that we're quietly turning sigma from [..., 0] to [...].
+            free_energy = sigma[..., 0] * dists
+        else:
+            free_energy = sigma[..., 0]
         
-    # random noise is omitted.
-    # noise = torch.randn_like(sigma) * noise_std
-    
-    alpha = 1.0 - torch.exp(-free_energy)
+        # random noise is omitted.
+        # noise = torch.randn_like(sigma) * noise_std
+        
+        alpha = 1.0 - torch.exp(-free_energy)
+    else:
+        alpha = sigma[..., 0]
+        
     transmittance = torch.cat([
         torch.ones_like(alpha[..., :1]), # add 0 for transperancy 1 at t_0
         torch.cumprod(1.0 - alpha + eps, -1)

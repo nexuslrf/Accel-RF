@@ -32,12 +32,12 @@ class NeuSRender(VolSDFRender):
         self.anneal_end = anneal_end
     
     def get_cos_anneal_ratio(self, iters):
-        if self.anneal_end == 0.0:
+        if self.anneal_end == 0.0 or iters < 0:
             return 1.0
         else:
             return min(1.0, iters / self.anneal_end)
 
-    def forward(self, rays_o: Tensor, rays_d: Tensor, iters=0):
+    def forward(self, rays_o: Tensor, rays_d: Tensor, iters=-1):
         '''
         Args:
             rays_o: Tensor, sampled ray origins, [N_rays, 3]
@@ -110,14 +110,3 @@ class NeuSRender(VolSDFRender):
                     ret['normal_map'] = (normal_map + 1) / 2.
 
             return ret
-    
-    def jit_script(self):
-        self.embedder_pts = torch.jit.script(self.embedder_pts)
-        self.embedder_views = torch.jit.script(self.embedder_views)
-        self.sdf_net = torch.jit.script(self.sdf_net) if not self.sdf_net.weight_norm else self.sdf_net
-        self.rgb_net = torch.jit.script(self.rgb_net) if not self.rgb_net.weight_norm else self.rgb_net
-        if self.inverse_sphere_bg:
-            self.bg_embedder_pts = torch.jit.script(self.bg_embedder_pts)
-            self.bg_sdf_net = torch.jit.script(self.bg_sdf_net) if not self.bg_sdf_net.weight_norm else self.bg_sdf_net
-            self.bg_rgb_net = torch.jit.script(self.bg_rgb_net) if not self.bg_rgb_net.weight_norm else self.bg_rgb_net
-        return self

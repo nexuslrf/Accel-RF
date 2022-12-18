@@ -60,9 +60,8 @@ def main():
 
     volsdf_render = NeuSRender(
         # VolSDF model
-        point_sampler=NeusPointSampler(args.scene_bounding_sphere, args.near, args.far, args.N_samples, args.N_samples_eval,
-            args.N_samples_extra, args.eps, args.beta_iters, args.max_total_iters, args.inverse_sphere_bg,
-            args.N_samples_inverse_sphere, args.add_tiny, args.with_eikonal_samples),
+        point_sampler=NeusPointSampler(args.scene_bounding_sphere, args.near, args.far, args.N_samples, args.N_importance,
+            args.up_sample_steps, args.inverse_sphere_bg, args.N_samples_inverse_sphere, args.with_eikonal_samples),
         embedder_pts=PositionalEncoding(N_freqs=args.multires) if args.multires>0 else None,
         embedder_views=PositionalEncoding(N_freqs=args.multires_views) if args.multires_views>0 else None,
         sdf_net=SDFNet(args.feature_vector_size, 0.0, sdf_d_in, 1, [args.W_sdf]*args.D_sdf, 
@@ -82,6 +81,7 @@ def main():
         with_eikonal=args.with_eikonal_samples,
         white_bkgd=args.white_bkgd,
         chunk=args.chunk,
+        sample_eikonal=args.sample_eikonal,
         anneal_end=args.anneal_end,
     ).to(device)
 

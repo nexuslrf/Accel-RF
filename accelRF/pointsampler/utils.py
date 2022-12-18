@@ -1,5 +1,5 @@
 import torch
-from torch.tensor import Tensor
+from torch import Tensor
 
 # Hierarchical sampling (section 5.2)
 @torch.jit.script

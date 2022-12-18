@@ -35,7 +35,8 @@ def up_sample(z_vals: Tensor, sdf: Tensor, N_samples: int, inv_s: int):
     # |
     # ----------------------------------------------------------------------------------------------------------
     
-    prev_cos_val = torch.cat([torch.zeros([z_vals.shape[0], 1]), cos_val[:, :-1]], dim=-1)
+    one_tensor = torch.ones([z_vals.shape[0], 1], device=device)
+    prev_cos_val = torch.cat([0*one_tensor, cos_val[:, :-1]], dim=-1)
     cos_val = torch.min(cos_val, prev_cos_val)
     cos_val = cos_val.clip(-1e3, 0.0)
     
@@ -45,9 +46,10 @@ def up_sample(z_vals: Tensor, sdf: Tensor, N_samples: int, inv_s: int):
     next_cdf = torch.sigmoid(next_esti_sdf * inv_s)
     alpha = (prev_cdf - next_cdf + 1e-5) / (prev_cdf + 1e-5)
     weights = alpha * torch.cumprod(
-        torch.cat([torch.ones([z_vals.shape[0], 1]), 1. - alpha + 1e-7], -1), -1)[:, :-1]
+        torch.cat([one_tensor, 1. - alpha + 1e-7], -1), -1)[:, :-1]
     
-    samples = cdf_sample(N_samples, z_vals, weights, det=True, mid_bins=False, include_init_z_vals=False)
+    samples = cdf_sample(N_samples, z_vals, weights, det=True, mid_bins=False, 
+                include_init_z_vals=False, wo_last=True)
     
     z_vals, samples_idx = torch.sort(torch.cat([z_vals, samples], -1), -1)
 
@@ -100,7 +102,7 @@ class NeusPointSampler(nn.Module):
                 points = rays_o.unsqueeze(1) + samples.unsqueeze(2) * rays_d.unsqueeze(1)
                 points_flat = points.reshape(-1, 3)
                 with torch.no_grad():
-                    samples_sdf, _ = sdf_net(pts_embedder(points_flat), points_flat, sdf_only=True)
+                    samples_sdf, _ = sdf_net(pts_embedder(points_flat), points_flat, sdf_only=True) # 
 
                 if samples_idx is not None:
                     sdf_merge = torch.cat([sdf.reshape(-1, z_vals.shape[1] - samples.shape[1]),
@@ -109,7 +111,7 @@ class NeusPointSampler(nn.Module):
                 else:
                     sdf = samples_sdf
                 
-                samples, z_vals, samples_idx = up_sample(z_vals, sdf, N_steps, 64 * 2**i)
+                samples, z_vals, samples_idx = up_sample(z_vals, sdf.reshape(z_vals.shape[0], -1), N_steps, 64 * 2**i)
 
         z_samples = samples
 
@@ -118,8 +120,8 @@ class NeusPointSampler(nn.Module):
         # add some of the near surface points
         pts_eik = None
         if self.with_eik_sample and self.training:
-            idx = torch.randint(z_vals.shape[-1], (z_vals.shape[0],), device=device)
-            z_samples_eik = torch.gather(z_vals, 1, idx.unsqueeze(-1))
+            idx = torch.randint(z_samples.shape[-1], (z_vals.shape[0],), device=device)
+            z_samples_eik = torch.gather(z_samples, 1, idx.unsqueeze(-1))
             pts_eik = rays_o[...,None,:] + rays_d[...,None,:] * z_samples_eik[...,None]
 
         pts_bg, z_vals_bg = None, None

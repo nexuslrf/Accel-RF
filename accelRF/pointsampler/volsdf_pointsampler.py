@@ -197,7 +197,7 @@ class VolSDFPointSampler(nn.Module):
         pts_eik = None
         if self.with_eik_sample and self.training:
             idx = torch.randint(z_vals.shape[-1], (z_vals.shape[0],), device=device)
-            z_samples_eik = torch.gather(z_vals, 1, idx.unsqueeze(-1))
+            z_samples_eik = torch.gather(z_samples, 1, idx.unsqueeze(-1))
             pts_eik = rays_o[...,None,:] + rays_d[...,None,:] * z_samples_eik[...,None]
 
         pts_bg, z_vals_bg = None, None

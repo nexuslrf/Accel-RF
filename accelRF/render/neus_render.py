@@ -61,7 +61,7 @@ class NeuSRender(VolSDFRender):
             # dist
             dists = z_vals[...,1:] - z_vals[...,:-1]
             # mid points
-            pts = 0.5 * (pts[..., 1:] + pts[..., :-1])
+            pts = 0.5 * (pts[...,1:,:] + pts[..., :-1,:])
 
             N_samples = pts.shape[-2]
             pts.requires_grad_(True)

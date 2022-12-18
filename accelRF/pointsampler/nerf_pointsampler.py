@@ -56,7 +56,8 @@ def cdf_sample(
     N_samples: int,
     z_vals: Tensor, weights: Tensor,
     det: bool=True, mid_bins: bool=True,
-    eps: float=1e-5, include_init_z_vals: bool=True
+    eps: float=1e-5, include_init_z_vals: bool=True,
+    wo_last: bool=False
     ):
     '''
     cdf_sample relies on (i) coarse_sample's results (ii) output of coarse MLP
@@ -74,10 +75,16 @@ def cdf_sample(
     N_base_samples = z_vals.shape[1]
     if mid_bins:
         bins = .5 * (z_vals[...,1:] + z_vals[...,:-1]) 
-        weights_ = weights[..., 1:-1] + eps # prevent nans
+        if wo_last:
+            weights_ = weights[..., 1:] + eps # prevent nans
+        else:
+            weights_ = weights[..., 1:-1] + eps # prevent nans
     else:
         bins = z_vals
-        weights_ = weights[..., :-1] + eps # prevent nans
+        if wo_last:
+            weights_ = weights + eps
+        else:
+            weights_ = weights[..., :-1] + eps # prevent nans
     
     # Get pdf & cdf
     pdf = weights_ / torch.sum(weights_, -1, keepdim=True)

@@ -29,8 +29,8 @@ def config_parser():
     # point sampling options
     parser.add_argument("--N_samples", type=int, default=64, 
                         help='number of coarse samples per ray')
-    parser.add_argument("--N_samples_eval", type=int, default=128)
-    parser.add_argument("--N_samples_extra", type=int, default=32)
+    parser.add_argument("--N_importance", type=int, default=64)
+    parser.add_argument("--up_sample_steps", type=int, default=4)
     parser.add_argument("--near", type=float, default=0.0)
     parser.add_argument("--far", type=float, default=0.0)
     parser.add_argument("--eps", type=float, default=0.1)
@@ -70,7 +70,7 @@ def config_parser():
     parser.add_argument("--sdf_geo_init", action='store_true')
     parser.add_argument("--sdf_weight_norm", action='store_true')
     parser.add_argument("--sdf_skip_in", nargs='+', type=int, default=[4])
-    parser.add_argument("--sdf_bias", type=float, default=0.6)
+    parser.add_argument("--sdf_bias", type=float, default=0.5)
 
     ## rgb net
     parser.add_argument("--D_rgb", type=int, default=4)
@@ -109,6 +109,7 @@ def config_parser():
 
     # loss options
     parser.add_argument("--with_eikonal_samples", action='store_true')
+    parser.add_argument("--sample_eikonal", action='store_true')
     parser.add_argument("--eikonal_weight", type=float, default=0.1)
 
 

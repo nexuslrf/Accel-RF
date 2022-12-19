@@ -55,6 +55,9 @@ def config_parser():
                         help='do not reload weights from saved ckpt')
     parser.add_argument("--ft_path", type=str, default=None, 
                         help='specific weights file to reload for network')
+    parser.add_argument("--lrate_alpha", type=float, default=0)
+    parser.add_argument("--warm_up_end", type=int, default=0)
+
     
     # model options
     parser.add_argument("--feature_vector_size", type=int, default=256)

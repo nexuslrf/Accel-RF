@@ -43,6 +43,18 @@ img2mse = lambda x, y : torch.mean((x - y) ** 2)
 mse2psnr = torch.no_grad()(lambda x : -10. * torch.log10(x))
 to8b = lambda x : (255*np.clip(x,0,1)).astype(np.uint8)
 
+def update_learning_rate(optimizer, iter_step, learning_rate, learning_rate_alpha, warm_up_end, end_iter):
+    if iter_step < warm_up_end:
+        learning_factor = iter_step / warm_up_end
+    else:
+        alpha = learning_rate_alpha
+        progress = (iter_step - warm_up_end) / (end_iter - warm_up_end)
+        learning_factor = (np.cos(np.pi * progress) + 1.0) * 0.5 * (1 - alpha) + alpha
+
+    for g in optimizer.param_groups:
+        g['lr'] = learning_rate * learning_factor
+
+
 def main():
     # prepare data
     if args.dataset_type == 'blender':
@@ -61,7 +73,7 @@ def main():
     volsdf_render = NeuSRender(
         # VolSDF model
         point_sampler=NeusPointSampler(args.scene_bounding_sphere, args.near, args.far, args.N_samples, args.N_importance,
-            args.up_sample_steps, args.inverse_sphere_bg, args.N_samples_inverse_sphere, args.with_eikonal_samples),
+            args.up_sample_steps, args.inverse_sphere_bg, args.N_samples_inverse_sphere, args.with_eikonal_samples, args.sample_eikonal),
         embedder_pts=PositionalEncoding(N_freqs=args.multires) if args.multires>0 else None,
         embedder_views=PositionalEncoding(N_freqs=args.multires_views) if args.multires_views>0 else None,
         sdf_net=SDFNet(args.feature_vector_size, 0.0, sdf_d_in, 1, [args.W_sdf]*args.D_sdf, 
@@ -105,7 +117,10 @@ def main():
             pass
         volsdf_render.load_state_dict(ckpt['state_dict'])
 
-    lr_sched = optim.lr_scheduler.ExponentialLR(optimizer, 0.1**(1/(args.lrate_decay*1000)), last_epoch=start-1)
+    if args.warm_up_end > 0 and args.lrate_alpha > 0:
+        update_learning_rate(optimizer, start, args.lrate, args.lrate_alpha, args.warm_up_end, args.N_iters)
+    else:
+        lr_sched = optim.lr_scheduler.ExponentialLR(optimizer, 0.1**(1/(args.lrate_decay*1000)), last_epoch=start-1)
     if args.local_rank >=0:
         volsdf_render_ = torch.nn.parallel.DistributedDataParallel(volsdf_render, device_ids=[args.local_rank])
     else:
@@ -136,8 +151,10 @@ def main():
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
-        lr_sched.step()
+        if args.warm_up_end > 0 and args.lrate_alpha > 0:
+            update_learning_rate(optimizer, i, args.lrate, args.lrate_alpha, args.warm_up_end, args.N_iters)
+        else:
+            lr_sched.step()
 
         if i%args.i_print==0:
             mse = img2mse(gt_rgb, render_out['rgb'])

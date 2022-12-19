@@ -62,7 +62,7 @@ class NeusPointSampler(nn.Module):
     '''
     def __init__(self, scene_bounding_sphere, near, far, N_samples, N_importance,
                  up_sample_steps=1, inverse_sphere_bg=False, N_samples_inverse_sphere=0,
-                 with_eik_sample=False):
+                 with_eik_sample=False, sample_eikonal=False):
         super().__init__()
         self.near, self.far = near, far
         if self.far <=0:
@@ -76,6 +76,7 @@ class NeusPointSampler(nn.Module):
 
         self.inverse_sphere_bg = inverse_sphere_bg
         self.with_eik_sample = with_eik_sample
+        self.sample_eikonal = sample_eikonal
 
     def forward(
         self, rays_o: Tensor, rays_d: Tensor, sdf_net: nn.Module, 
@@ -119,7 +120,7 @@ class NeusPointSampler(nn.Module):
 
         # add some of the near surface points
         pts_eik = None
-        if self.with_eik_sample and self.training:
+        if self.with_eik_sample and self.training and self.sample_eikonal:
             idx = torch.randint(z_samples.shape[-1], (z_vals.shape[0],), device=device)
             z_samples_eik = torch.gather(z_samples, 1, idx.unsqueeze(-1))
             pts_eik = rays_o[...,None,:] + rays_d[...,None,:] * z_samples_eik[...,None]
